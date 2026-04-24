@@ -265,10 +265,10 @@ def run_scanner():
             fr = get_funding_rate(r["symbol"])
             oi = get_open_interest(r["symbol"])
             print(make_signal(r, fr, oi))
-            send_telegram_signal(make_signal(r, fr, oi))  # ← same indent
+            send_telegram_signal(make_signal(r, fr, oi))
             log_signal(r, fr, oi)
-        sent = mark_sent(sent, r["symbol"], r["direction"])
-        time.sleep(0.1)
+            sent = mark_sent(sent, r["symbol"], r["direction"])
+            time.sleep(0.1)
 
     save_sent(sent)
     print(f"\n  Log: {LOG_FILE}")
