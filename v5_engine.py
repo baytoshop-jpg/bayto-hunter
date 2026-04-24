@@ -14,10 +14,10 @@ except ImportError:
 FAPI = "https://fapi.binance.com"
 
 # ─── SCORING THRESHOLDS ──────────────────────────────────────
-SCORE_A  = 35   # A+ setup  → 2-3% position
-SCORE_B  = 25   # B  setup  → 1-2% position
+SCORE_A  = 25   # A+ setup  → 2-3% position
+SCORE_B  = 18   # B  setup  → 1-2% position
 SCORE_C  = 12   # C  setup  → 0.5-1%
-MIN_RR   = 2.0  # Minimum Risk:Reward
+MIN_RR   = 1.5  # Minimum Risk:Reward
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
 HTF   = [("4H","4h"), ("1H","1h")]          # Trend direction
