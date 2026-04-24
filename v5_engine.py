@@ -14,10 +14,10 @@ except ImportError:
 FAPI = "https://fapi.binance.com"
 
 # ─── SCORING THRESHOLDS ──────────────────────────────────────
-SCORE_A  = 25   # A+ setup  → 2-3% position
-SCORE_B  = 18   # B  setup  → 1-2% position
-SCORE_C  = 12   # C  setup  → 0.5-1%
-MIN_RR   = 1.5  # Minimum Risk:Reward
+SCORE_A  = 20   # A+ setup  → 2-3% position
+SCORE_B  = 15   # B  setup  → 1-2% position
+SCORE_C  = 10   # C  setup  → 0.5-1%
+MIN_RR   = 1.3  # Minimum Risk:Reward
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
 HTF   = [("4H","4h"), ("1H","1h")]          # Trend direction
@@ -521,8 +521,8 @@ def analyze_cascade(symbol, gainers_set=None):
 
     if h4_dir == "neutral" or h1_dir == "neutral":
         return None
-    if h4_dir != h1_dir:
-        return None   # HTF conflict — skip
+    if h4_dir != h1_dir and h4_dir != "neutral":
+    return None   # HTF conflict — skip
 
     direction = "LONG" if h4_dir=="bullish" else "SHORT"
     htf_score = sum(htf_scores.values())
