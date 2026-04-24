@@ -262,11 +262,11 @@ def run_scanner():
     print(f"{'='*56}")
 
     for r in results[:5]:
-        fr = get_funding_rate(r["symbol"])
-        oi = get_open_interest(r["symbol"])
-        print(make_signal(r, fr, oi))
-        log_signal(r, fr, oi)
-      send_telegram_signal(make_signal(r, fr, oi))
+            fr = get_funding_rate(r["symbol"])
+            oi = get_open_interest(r["symbol"])
+            print(make_signal(r, fr, oi))
+            send_telegram_signal(make_signal(r, fr, oi))  # ← same indent
+            log_signal(r, fr, oi)
         sent = mark_sent(sent, r["symbol"], r["direction"])
         time.sleep(0.1)
 
