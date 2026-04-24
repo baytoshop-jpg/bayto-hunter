@@ -522,7 +522,7 @@ def analyze_cascade(symbol, gainers_set=None):
     if h4_dir == "neutral" or h1_dir == "neutral":
         return None
     if h4_dir != h1_dir and h4_dir != "neutral":
-    return None   # HTF conflict — skip
+        return None   # HTF conflict — skip
 
     direction = "LONG" if h4_dir=="bullish" else "SHORT"
     htf_score = sum(htf_scores.values())
