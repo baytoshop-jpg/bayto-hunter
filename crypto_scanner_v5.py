@@ -91,80 +91,75 @@ def log_signal(r, fr, oi):
 
 # ─── SIGNAL MESSAGE ───────────────────────────────────────
 def make_signal(r, fr, oi):
-    d      = r["direction"]
-    emoji  = "📈" if d=="LONG" else "📉"
-    stars  = "★"*min(r["score"]//5,10)+"☆"*(10-min(r["score"]//5,10))
-    g_tag  = " 🔥" if r.get("is_gainer") else ""
+    import os, requests as req
 
-    # Grade badge
-    grade_tag = {
-        "A+": "🏆 A+ SETUP — Full position",
-        "B":  "⚡ B SETUP — Half position",
-        "C":  "📌 C SETUP — Quarter position",
-    }[r["grade"]]
+    groq_key = os.environ.get('GROQ_API_KEY','')
+    d        = r["direction"]
+    emoji    = "📈" if d=="LONG" else "📉"
+    g_tag    = " 🔥" if r.get("is_gainer") else ""
+    conf_txt = "\n".join([f"✅ {c}" for c in r["confirmations"][:5]])
 
-    # Zone line
-    pd_names = {"discount":"🟢 Discount (Long Zone)",
-                "premium": "🔴 Premium (Short Zone)",
-                "equilibrium":"⚪ Equilibrium"}
-    zone_line = pd_names[r["pd_zone"]]
+    # Groq AI analysis
+    ai_analysis = ""
+    if groq_key:
+        try:
+            prompt = f"""You are a crypto trading analyst. Write a brief 2-3 sentence market analysis for this signal.
+Symbol: {r['symbol']}
+Direction: {d}
+Timeframe: 5m entry, confirmed on 4H+1H
+Score: {r['score']}/50
+Key confirmations: {', '.join(r['confirmations'][:3])}
+Candle pattern: {r['candle']}
+Zone: {r['pd_zone']}
 
-    # Extras
-    extras = []
-    if r["flip"].get("retest"):
-        ft = "R→S" if r["flip"]["type"]=="r_to_s" else "S→R"
-        extras.append(f"🔄 Flip+Retest: {ft} at {r['flip']['level']}")
-    if r["sweep"].get("swept"):
-        extras.append(f"⚡ Sweep: Stop hunt at {r['sweep']['level']}")
-    if r["eqhl"].get("eql") and d=="LONG":
-        extras.append(f"💧 EQL: {r['eqhl']['eql']}")
-    if r["eqhl"].get("eqh") and d=="SHORT":
-        extras.append(f"💧 EQH: {r['eqhl']['eqh']}")
-    if r.get("entry_zones"):
-        extras.append(f"📍 Zone: {r['entry_zones'][0]}")
+Rules:
+- English only
+- Maximum 3 sentences
+- Mention why this is a good entry
+- Mention key risk
+- Be concise and professional"""
 
-    # OI + Funding
-    oi_line  = f"📊 OI: {oi['signal'].title()}" if oi.get("signal") != "unknown" else ""
-    fr_names = {"long_favored":"Neg (Long bias)",
-                "short_favored":"Pos (Short bias)","neutral":"Neutral"}
-    fr_line  = f"💸 Funding: {fr_names.get(fr['bias'],'?')} ({fr['rate']}%)"
+            resp = req.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}",
+                         "Content-Type": "application/json"},
+                json={"model": "llama3-8b-8192",
+                      "max_tokens": 150,
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=10
+            )
+            ai_analysis = resp.json()["choices"][0]["message"]["content"].strip()
+        except:
+            ai_analysis = ""
 
-    # Confirmations
-    conf_txt = "\n".join([f"  ✅ {c}" for c in r["confirmations"]])
+    grade_tag = {"A+":"🏆 A+ SETUP","B":"⚡ B SETUP","C":"📌 C SETUP"}[r["grade"]]
+    pd_names  = {"discount":"🟢 Discount","premium":"🔴 Premium","equilibrium":"⚪ Equilibrium"}
 
-    # All candles found
-    candles_str = ", ".join(r.get("all_candles",[r["candle"]]))
-
-    # Extra lines
-    extra_str = ("\n" + "\n".join(extras)) if extras else ""
-
-    msg = f"""
-{'='*52}
-{emoji} {r['symbol']} | 5m ENTRY | {d}{g_tag}
-{grade_tag}
-{'='*52}
-⭐ Score   : {r['score']}/50  {stars}
-🕯️  Candle  : {candles_str}
-🌍 Zone    : {zone_line}
-📊 4H      : {r['h4_trend'].upper()} | {r['h4_note']}
-📊 1H      : {r['h1_trend'].upper()} | {r['h1_note']}
-📊 MTF     : {'30m+15m confirm' if r['mtf_agrees']==2 else '1 TF confirms'}{extra_str}
-{oi_line}
-{fr_line}
+    msg = f"""{'='*48}
+{emoji} <b>{r['symbol']}</b> | 5m | <b>{d}</b>{g_tag}
+{grade_tag} | Score: {r['score']}/50
+{'='*48}
+🕯 Candle  : {r['candle']}
+🌍 Zone    : {pd_names[r['pd_zone']]}
+📊 4H      : {r['h4_trend'].upper()}
+📊 1H      : {r['h1_trend'].upper()}
+📊 MTF     : {'30m+15m ✅' if r['mtf_agrees']==2 else '1 TF ✅'}
 
 💰 Entry   : {r['entry']}
-🛑 SL      : {r['sl']}  (ATR×2)
-🎯 TP1     : {r['tp1']}  (ATR×1.5 — quick scalp)
-🎯 TP2     : {r['tp2']}  (ATR×3 — main target)
-🎯 TP3     : {r['tp3']}  (ATR×4.5 — extended)
+🛑 SL      : {r['sl']}
+🎯 TP1     : {r['tp1']} (+2%)
+🎯 TP2     : {r['tp2']} (+5%)
+🎯 TP3     : {r['tp3']} (+7%)
 📐 R:R     : 1:{r['rr']}
-💼 Position: {r['pos_size']} of capital
+💼 Size    : {r['pos_size']}
 
 🔍 Confirmations:
-{conf_txt}
+{conf_txt}"""
 
-⚠️ TradingView pe confirm karo phir post karo!
-{'='*52}"""
+    if ai_analysis:
+        msg += f"\n\n🤖 AI Analysis:\n{ai_analysis}"
+
+    msg += f"\n\n⚠️ TradingView pe confirm karo!\n{'='*48}"
     return msg
 
 # ─── MAIN SCANNER ─────────────────────────────────────────
