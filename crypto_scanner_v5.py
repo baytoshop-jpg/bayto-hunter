@@ -168,6 +168,20 @@ def make_signal(r, fr, oi):
     return msg
 
 # ─── MAIN SCANNER ─────────────────────────────────────────
+import os
+
+def send_telegram_signal(message):
+    token   = os.environ.get('TELEGRAM_TOKEN', '8669042447:AAEXQrILOCgj5S89baTL1eMo42rr7luu5M8')
+    chat_id = os.environ.get('CHAT_ID', '1255000050')
+    try:
+        import requests
+        requests.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
+            timeout=10
+        )
+    except:
+        pass
 def run_scanner():
     now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sent = load_sent()
@@ -252,6 +266,7 @@ def run_scanner():
         oi = get_open_interest(r["symbol"])
         print(make_signal(r, fr, oi))
         log_signal(r, fr, oi)
+      send_telegram_signal(make_signal(r, fr, oi))
         sent = mark_sent(sent, r["symbol"], r["direction"])
         time.sleep(0.1)
 
