@@ -1,8 +1,10 @@
 """
-v5_engine.py — COMPLETE FIXED VERSION
-4H → 1H → 30m → 15m → 5m CASCADE
+v5_engine.py — COMPLETE UPDATED VERSION
+4H → 1H → 5m CASCADE with Self-Learning
 """
 import requests, pandas as pd, numpy as np, time
+import json, os
+from datetime import datetime, timedelta
 
 try:
     import ta
@@ -12,7 +14,7 @@ except ImportError:
 
 FAPI = "https://fapi.binance.com"
 
-# ─── SCORING THRESHOLDS (EASY MODE - SIGNALS AAENGE) ─────────
+# ─── SCORING THRESHOLDS ──────────────────────────────────────
 SCORE_A = 12
 SCORE_B = 8
 SCORE_C = 5
@@ -20,44 +22,56 @@ MIN_RR = 1.0
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
 HTF = [("4H", "4h"), ("1H", "1h")]
-MTF = [("30m", "30m"), ("15m", "15m")]
 
-# ─── EXPANDED FALLBACK LIST (300+ COINS) ─────────────────────
-def get_expanded_fallback_list():
-    """Complete Binance futures coins list"""
-    return [
-        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-        "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
-        "MATICUSDT", "LTCUSDT", "ATOMUSDT", "NEARUSDT", "APTUSDT",
-        "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "TIAUSDT",
-        "WIFUSDT", "PEPEUSDT", "SHIBUSDT", "BONKUSDT", "FLOKIUSDT",
-        "DOGSUSDT", "NOTUSDT", "MEWUSDT", "MYROUSDT", "WENUSDT",
-        "POPCATUSDT", "BRETTUSDT", "MOGUSDT", "APEUSDT", "KATUSDT",
-        "DUSDT", "BSBUSDT", "ENAUSDT", "ETHFIUSDT", "REZUSDT",
-        "SAGAUSDT", "WUSDT", "OMNIUSDT", "AEVOUSDT", "PORTALUSDT",
-        "ALTUSDT", "UNIUSDT", "AAVEUSDT", "MKRUSDT", "COMPUSDT",
-        "CRVUSDT", "LDOUSDT", "FXSUSDT", "FETUSDT", "AGIXUSDT",
-        "OCEANUSDT", "RNDRUSDT", "TAOUSDT", "WLDUSDT", "GALAUSDT",
-        "SANDUSDT", "MANAUSDT", "AXSUSDT", "IMXUSDT", "MAGICUSDT",
-        "SEIUSDT", "TRBUSDT", "ICPUSDT", "FILUSDT", "JUPUSDT",
-        "PYTHUSDT", "JASMYUSDT", "CKBUSDT", "ARKMUSDT", "LPTUSDT",
-        "BAKEUSDT", "COTIUSDT", "STORJUSDT", "BANDUSDT", "GRTUSDT",
-        "ENJUSDT", "BLURUSDT", "ORDIUSDT", "RUNEUSDT", "STXUSDT",
-        "ONDOUSDT", "OMUSDT", "1000PEPEUSDT", "1000BONKUSDT",
-    ]
+# ─── SELF-LEARNING MEMORY ───────────────────────────────────
+MEMORY_FILE = "signal_memory.json"
+
+def load_memory():
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {"successful_patterns": {}, "failed_patterns": {}}
+
+def save_memory(memory):
+    with open(MEMORY_FILE, "w") as f:
+        json.dump(memory, f, indent=2)
+
+def get_pattern_score(pattern):
+    memory = load_memory()
+    wins = memory["successful_patterns"].get(pattern, 0)
+    losses = memory["failed_patterns"].get(pattern, 0)
+    total = wins + losses
+    if total == 0:
+        return 0.5
+    return wins / total
+
+def adjust_score_with_learning(score, pattern):
+    success_rate = get_pattern_score(pattern)
+    if success_rate > 0.7:
+        return score + 3
+    elif success_rate < 0.3:
+        return score - 3
+    return score
+
+def learn_outcome(symbol, direction, pattern, outcome):
+    memory = load_memory()
+    if outcome == "win":
+        memory["successful_patterns"][pattern] = memory["successful_patterns"].get(pattern, 0) + 1
+    elif outcome == "loss":
+        memory["failed_patterns"][pattern] = memory["failed_patterns"].get(pattern, 0) + 1
+    save_memory(memory)
 
 # ─── FETCH SYMBOLS ───────────────────────────────────────────
 def get_futures_symbols():
-    """Fetch all USDT perpetual futures"""
-    
     endpoints = [
         "https://fapi.binance.com/fapi/v1/exchangeInfo",
         "https://api.binance.com/api/v3/exchangeInfo",
     ]
-    
     for endpoint in endpoints:
         try:
-            print(f"    Trying: {endpoint[:50]}...")
             r = requests.get(endpoint, timeout=30)
             if r.status_code == 200:
                 data = r.json()
@@ -70,16 +84,39 @@ def get_futures_symbols():
                             if s.get('contractType') == 'PERPETUAL' or 'contractType' not in s:
                                 syms.append(s['symbol'])
                     if len(syms) > 50:
-                        print(f"    ✓ Found {len(syms)} pairs")
                         return sorted(syms)
-        except Exception as e:
-            print(f"    Failed: {str(e)[:30]}")
-            time.sleep(1)
+        except:
+            continue
     
-    print("    Using expanded fallback list")
-    return get_expanded_fallback_list()
+    # Fallback list
+    return [
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+        "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
+        "WIFUSDT", "PEPEUSDT", "SHIBUSDT", "BONKUSDT", "FLOKIUSDT",
+        "APEUSDT", "KATUSDT", "ENAUSDT", "FETUSDT", "WLDUSDT",
+        "SEIUSDT", "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT",
+    ]
 
-# ─── TOP VOLUME ──────────────────────────────────────────────
+# ─── TOP GAINERS ─────────────────────────────────────────────
+def get_top_gainers(all_syms):
+    try:
+        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
+        if r.status_code != 200:
+            return set()
+        gainers = set()
+        for t in r.json():
+            sym = t.get('symbol')
+            if sym in all_syms:
+                try:
+                    pct = float(t.get('priceChangePercent', 0))
+                    if abs(pct) > 3:
+                        gainers.add(sym)
+                except:
+                    pass
+        return gainers
+    except:
+        return set()
+
 def get_top_volume(all_syms, top_n=50):
     try:
         r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
@@ -98,27 +135,6 @@ def get_top_volume(all_syms, top_n=50):
         return sorted(vmap, key=vmap.get, reverse=True)[:top_n]
     except:
         return all_syms[:top_n]
-
-# ─── TOP GAINERS ─────────────────────────────────────────────
-def get_top_gainers(all_syms):
-    """Get coins with >3% movement"""
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
-        if r.status_code != 200:
-            return set()
-        gainers = set()
-        for t in r.json():
-            sym = t.get('symbol')
-            if sym in all_syms:
-                try:
-                    pct = float(t.get('priceChangePercent', 0))
-                    if abs(pct) > 3:
-                        gainers.add(sym)
-                except:
-                    pass
-        return gainers
-    except:
-        return set()
 
 # ─── KLINES ──────────────────────────────────────────────────
 def get_klines(symbol, interval, limit=200):
@@ -146,29 +162,27 @@ def get_funding_rate(symbol):
         if r.status_code != 200:
             return {"rate": 0, "bias": "neutral"}
         rate = float(r.json().get("lastFundingRate", 0)) * 100
-        bias = "long_favored" if rate < -0.05 else ("short_favored" if rate > 0.05 else "neutral")
-        return {"rate": round(rate, 4), "bias": bias}
+        return {"rate": round(rate, 4), "bias": "neutral"}
     except:
         return {"rate": 0, "bias": "neutral"}
 
-# ─── OPEN INTEREST ───────────────────────────────────────────
 def get_open_interest(symbol):
     try:
         r = requests.get(f"{FAPI}/futures/data/openInterestHist",
                params={"symbol": symbol, "period": "1h", "limit": 3}, timeout=10)
         if r.status_code != 200:
-            return {"rising": None, "signal": "unknown"}
+            return {"signal": "unknown"}
         data = r.json()
         if not data or len(data) < 2:
-            return {"rising": None, "signal": "unknown"}
+            return {"signal": "unknown"}
         rising = float(data[-1]["sumOpenInterest"]) > float(data[-2]["sumOpenInterest"])
-        return {"rising": rising, "signal": "rising" if rising else "falling"}
+        return {"signal": "rising" if rising else "falling"}
     except:
-        return {"rising": None, "signal": "unknown"}
+        return {"signal": "unknown"}
 
 # ─── INDICATORS ──────────────────────────────────────────────
 def add_indicators(df):
-    c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
+    c, h, l = df["close"], df["high"], df["low"]
     if TA_AVAILABLE:
         df["ema20"] = ta.trend.EMAIndicator(c, 20).ema_indicator()
         df["ema50"] = ta.trend.EMAIndicator(c, 50).ema_indicator()
@@ -188,7 +202,6 @@ def add_indicators(df):
         fast = c.ewm(span=12).mean() - c.ewm(span=26).mean()
         df["macd_h"] = fast - fast.ewm(span=9).mean()
         df["atr"] = (h - l).rolling(14).mean()
-    df["vol_ma"] = v.rolling(20).mean()
     return df
 
 # ─── TREND ANALYSIS ──────────────────────────────────────────
@@ -211,18 +224,14 @@ def analyze_tf_trend(df):
     if price > ema200:
         direction = "bullish"
         score += 3
-        notes.append("Above EMA200")
     else:
         direction = "bearish"
         score += 3
-        notes.append("Below EMA200")
 
     if macd_h > 0 and pmh <= 0:
         score += 3
-        notes.append("MACD bull cross")
     elif macd_h < 0 and pmh >= 0:
         score += 3
-        notes.append("MACD bear cross")
 
     return direction, score, notes
 
@@ -273,25 +282,6 @@ def detect_5m_candles(df):
     
     return found
 
-# ─── DUMMY FUNCTIONS ─────────────────────────────────────────
-def find_sr_zones(df, lb=100, zone_pct=0.008, min_touches=2):
-    return []
-def find_order_blocks(df):
-    return {"bull_ob": None, "bear_ob": None}
-def find_fvg(df):
-    return {"bull_fvg": None, "bear_fvg": None}
-def check_sr_flip(df, sr_zones):
-    return {"flipped": False}
-def check_sweep(df):
-    return {"swept": False}
-def get_pd_zone(df, lb=100):
-    return "equilibrium", 50
-def check_eqhl(df, lb=50, thresh=0.003):
-    return {}
-def check_entry_zone(df, direction, sr_zones, ob, fvg):
-    return []
-def get_swing_points(df, lb=5):
-    return {}
 def calc_sl_tp(price, direction, atr):
     if direction == "LONG":
         sl = round(price - atr * 2.0, 6)
@@ -354,10 +344,14 @@ def analyze_cascade(symbol, gainers_set=None):
         return None
     
     best_candle = max(matching, key=lambda x: x[2])
+    pattern_name = best_candle[0]
     
-    # Scoring
+    # Score calculation
     score = min(htf_score, 12)
     score += min(best_candle[2] * 2, 8)
+    
+    # Learning adjustment
+    score = adjust_score_with_learning(score, pattern_name)
     
     # Gainer bonus
     is_gainer = bool(gainers_set and symbol in gainers_set)
@@ -383,10 +377,10 @@ def analyze_cascade(symbol, gainers_set=None):
     
     confirmations = [
         f"4H {h4_dir} + 1H {h1_dir} aligned",
-        f"5m: {best_candle[0]}",
+        f"5m: {pattern_name}",
     ]
     if is_gainer:
-        confirmations.append("🔥 Top gainer momentum")
+        confirmations.append("Top gainer momentum")
     
     return {
         "symbol": symbol,
@@ -400,9 +394,7 @@ def analyze_cascade(symbol, gainers_set=None):
         "tp2": tp2,
         "tp3": tp3,
         "rr": rr,
-        "atr": round(atr, 6),
-        "candle": best_candle[0],
-        "candle_str": best_candle[2],
+        "candle": pattern_name,
         "confirmations": confirmations,
         "h4_trend": h4_dir,
         "h1_trend": h1_dir,
