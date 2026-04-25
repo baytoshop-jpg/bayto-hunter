@@ -16,7 +16,7 @@ FAPI = "https://fapi.binance.com"
 # ─── SCORING THRESHOLDS ──────────────────────────────────────
 SCORE_A  = 15   # A+ setup  → 2-3% position
 SCORE_B  = 13   # B  setup  → 1-2% position
-SCORE_C  = 10   # C  setup  → 0.5-1%
+SCORE_C  = 5   # C  setup  → 0.5-1%
 MIN_RR   = 1.2  # Minimum Risk:Reward
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
