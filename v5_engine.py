@@ -14,15 +14,15 @@ except ImportError:
 FAPI = "https://fapi.binance.com"
 
 # ─── SCORING THRESHOLDS ──────────────────────────────────────
-SCORE_A  = 20   # A+ setup  → 2-3% position
-SCORE_B  = 15   # B  setup  → 1-2% position
+SCORE_A  = 15   # A+ setup  → 2-3% position
+SCORE_B  = 13   # B  setup  → 1-2% position
 SCORE_C  = 10   # C  setup  → 0.5-1%
-MIN_RR   = 1.3  # Minimum Risk:Reward
+MIN_RR   = 1.2  # Minimum Risk:Reward
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
 HTF   = [("4H","4h"), ("1H","1h")]          # Trend direction
 MTF   = [("30m","30m"), ("15m","15m")]       # Confirmation
-ENTRY = ("5m","5m")                          # Entry only
+ENTRY = ("15m","15m")                          # Entry only
 
 # ─── CANDLESTICK PATTERN STRENGTHS ───────────────────────────
 PATTERN_STRENGTH = {
