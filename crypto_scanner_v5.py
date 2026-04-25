@@ -1,430 +1,258 @@
 """
-v5_engine.py — FULLY FIXED FOR BINANCE API
-4H → 1H → 30m → 15m → 5m CASCADE
+CRYPTO FUTURES SCANNER v5.3 — DEBUG MODE
+Har coin ka status dikhayega - kyun signal nahi mil raha
 """
-import requests, pandas as pd, numpy as np, time
+import time, json, csv, os
+import requests
+from datetime import datetime
+from v5_engine import (
+    get_futures_symbols, get_top_volume, get_top_gainers,
+    get_funding_rate, get_open_interest, analyze_cascade,
+    SCORE_A, SCORE_B, SCORE_C
+)
 
-try:
-    import ta
-    TA_AVAILABLE = True
-except ImportError:
-    TA_AVAILABLE = False
-
+TOP_COINS = 30  # Kam kiya for faster debug
+GAINER_THRESHOLD = 5  # Kam kiya 5% se
+BLOCK_HOURS = 2
+LOG_FILE = "v5_signals_log.csv"
+SENT_FILE = "v5_sent.json"
 FAPI = "https://fapi.binance.com"
 
-# ─── SCORING THRESHOLDS ──────────────────────────────────────
-SCORE_A = 20
-SCORE_B = 15
-SCORE_C = 10
-MIN_RR = 1.3
-
-# ─── TIMEFRAME CASCADE ───────────────────────────────────────
-HTF = [("4H", "4h"), ("1H", "1h")]
-MTF = [("30m", "30m"), ("15m", "15m")]
-
-# ─── COMPLETE FALLBACK LIST (400+ COINS) ─────────────────────
-def get_full_fallback_list():
-    """Complete list of Binance futures coins"""
-    return [
-        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-        "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
-        "MATICUSDT", "LTCUSDT", "ATOMUSDT", "NEARUSDT", "APTUSDT",
-        "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "TIAUSDT",
-        "WIFUSDT", "PEPEUSDT", "SHIBUSDT", "FETUSDT", "RENDERUSDT",
-        "BONKUSDT", "FLOKIUSDT", "DOGSUSDT", "NOTUSDT", "MEWUSDT",
-        "MYROUSDT", "WENUSDT", "POPCATUSDT", "BRETTUSDT", "MOGUSDT",
-        "UNIUSDT", "AAVEUSDT", "MKRUSDT", "COMPUSDT", "CRVUSDT",
-        "LDOUSDT", "FXSUSDT", "METISUSDT", "STRKUSDT", "ZKUSDT",
-        "AGIXUSDT", "OCEANUSDT", "RNDRUSDT", "TAOUSDT", "WLDUSDT",
-        "GALAUSDT", "SANDUSDT", "MANAUSDT", "AXSUSDT", "IMXUSDT",
-        "APEUSDT", "MAGICUSDT", "ILVUSDT", "YGGUSDT", "PRIMEUSDT",
-        "ENAUSDT", "ETHFIUSDT", "REZUSDT", "SAGAUSDT", "WUSDT",
-        "OMNIUSDT", "AEVOUSDT", "PORTALUSDT", "DYMUSDT", "ALTUSDT",
-        "JUPUSDT", "PYTHUSDT", "TNSRUSDT", "JASMYUSDT", "CKBUSDT",
-        "ARKMUSDT", "TRUUSDT", "LPTUSDT", "BAKEUSDT", "COTIUSDT",
-        "STORJUSDT", "BANDUSDT", "GRTUSDT", "ENJUSDT", "SEIUSDT",
-        "TRBUSDT", "BLURUSDT", "ORDIUSDT", "RUNEUSDT", "STXUSDT",
-        "ONDOUSDT", "OMUSDT", "CFGUSDT", "1000PEPEUSDT", "1000BONKUSDT",
-    ]
-
-# ─── FIXED: BINANCE SYMBOLS FETCH ────────────────────────────
-def get_futures_symbols():
-    """Fetch all USDT perpetual futures from Binance - With FULL fallback"""
-    
-    # TRY 1: Binance API se fetch karo
-    for attempt in range(3):
+def load_sent():
+    if os.path.exists(SENT_FILE):
         try:
-            print(f"    Attempt {attempt+1}: fetching from Binance API...")
-            r = requests.get(f"{FAPI}/fapi/v1/exchangeInfo", timeout=30)
-            
+            with open(SENT_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_sent(d):
+    with open(SENT_FILE, "w") as f:
+        json.dump(d, f, indent=2)
+
+def is_dup(sent, sym, direction):
+    key = f"{sym}_{direction}"
+    if key in sent:
+        hrs = (time.time() - sent[key]) / 3600
+        if hrs < BLOCK_HOURS:
+            return True, round(BLOCK_HOURS - hrs, 1)
+    return False, 0
+
+def get_all_gainers_with_pct(all_syms):
+    """Sab gainers fetch karo with percentage"""
+    endpoints = [
+        "https://fapi.binance.com/fapi/v1/ticker/24hr",
+        "https://api.binance.com/api/v3/ticker/24hr",
+    ]
+    
+    for url in endpoints:
+        try:
+            print(f"    Fetching from: {url[:50]}...")
+            r = requests.get(url, timeout=15)
             if r.status_code == 200:
                 data = r.json()
-                symbols_data = data.get('symbols', [])
-                
-                if symbols_data:
-                    syms = []
-                    for s in symbols_data:
-                        if (s.get('quoteAsset') == 'USDT' and 
-                            s.get('status') == 'TRADING' and
-                            s.get('contractType') == 'PERPETUAL'):
-                            syms.append(s['symbol'])
-                    
-                    if len(syms) > 100:
-                        print(f"    ✓ API SUCCESS: Found {len(syms)} USDT perpetual pairs")
-                        return sorted(syms)
+                gainers = []
+                for ticker in data:
+                    sym = ticker.get('symbol')
+                    if sym and sym in all_syms:
+                        try:
+                            pct = float(ticker.get('priceChangePercent', 0))
+                            if abs(pct) >= GAINER_THRESHOLD:
+                                gainers.append({
+                                    'symbol': sym,
+                                    'change': pct,
+                                    'volume': float(ticker.get('quoteVolume', 0))
+                                })
+                        except:
+                            continue
+                gainers.sort(key=lambda x: abs(x['change']), reverse=True)
+                if gainers:
+                    print(f"    ✓ Found {len(gainers)} gainers >{GAINER_THRESHOLD}%")
+                    return gainers
         except Exception as e:
-            print(f"    Attempt {attempt+1} failed: {str(e)[:50]}")
-            time.sleep(2)
-    
-    # TRY 2: Ticker endpoint se fetch karo (backup)
-    try:
-        print("    Trying backup: fetching from ticker endpoint...")
-        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=30)
-        if r.status_code == 200:
-            data = r.json()
-            syms = list(set([t['symbol'] for t in data if t['symbol'].endswith('USDT')]))
-            if len(syms) > 100:
-                print(f"    ✓ BACKUP SUCCESS: Found {len(syms)} pairs from ticker")
-                return sorted(syms)
-    except Exception as e:
-        print(f"    Backup failed: {e}")
-    
-    # TRY 3: Use full fallback list
-    print("    ⚠️ API failed - Using COMPLETE fallback list (90+ coins)")
-    return get_full_fallback_list()
-
-# ─── TOP VOLUME ──────────────────────────────────────────────
-def get_top_volume(all_syms, top_n=50):
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
-        if r.status_code != 200:
-            return all_syms[:top_n]
-        vmap = {}
-        for t in r.json():
-            sym = t.get('symbol')
-            if sym in all_syms:
-                try:
-                    vmap[sym] = float(t.get('quoteVolume', 0))
-                except:
-                    pass
-        if not vmap:
-            return all_syms[:top_n]
-        return sorted(vmap, key=vmap.get, reverse=True)[:top_n]
-    except:
-        return all_syms[:top_n]
-
-# ─── TOP GAINERS ─────────────────────────────────────────────
-def get_top_gainers(all_syms):
-    """Get coins with >3% movement"""
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
-        if r.status_code != 200:
-            return set()
-        gainers = set()
-        for t in r.json():
-            sym = t.get('symbol')
-            if sym in all_syms:
-                try:
-                    pct = float(t.get('priceChangePercent', 0))
-                    if abs(pct) > 3:
-                        gainers.add(sym)
-                except:
-                    pass
-        return gainers
-    except:
-        return set()
-
-# ─── KLINES ──────────────────────────────────────────────────
-def get_klines(symbol, interval, limit=200):
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/klines",
-            params={"symbol": symbol, "interval": interval, "limit": limit},
-            timeout=10)
-        if r.status_code != 200:
-            return None
-        r.raise_for_status()
-        df = pd.DataFrame(r.json(), columns=[
-            "time", "open", "high", "low", "close", "volume",
-            "close_time", "qav", "trades", "tbbav", "tbqav", "ignore"])
-        for c in ["open", "high", "low", "close", "volume"]:
-            df[c] = df[c].astype(float)
-        df["time"] = pd.to_datetime(df["time"], unit="ms")
-        return df
-    except:
-        return None
-
-# ─── FUNDING RATE ────────────────────────────────────────────
-def get_funding_rate(symbol):
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/premiumIndex",
-               params={"symbol": symbol}, timeout=10)
-        if r.status_code != 200:
-            return {"rate": 0, "bias": "neutral"}
-        rate = float(r.json().get("lastFundingRate", 0)) * 100
-        bias = "long_favored" if rate < -0.05 else ("short_favored" if rate > 0.05 else "neutral")
-        return {"rate": round(rate, 4), "bias": bias}
-    except:
-        return {"rate": 0, "bias": "neutral"}
-
-# ─── OPEN INTEREST ───────────────────────────────────────────
-def get_open_interest(symbol):
-    try:
-        r = requests.get(f"{FAPI}/futures/data/openInterestHist",
-               params={"symbol": symbol, "period": "1h", "limit": 3}, timeout=10)
-        if r.status_code != 200:
-            return {"rising": None, "signal": "unknown"}
-        data = r.json()
-        if not data or len(data) < 2:
-            return {"rising": None, "signal": "unknown"}
-        rising = float(data[-1]["sumOpenInterest"]) > float(data[-2]["sumOpenInterest"])
-        return {"rising": rising, "signal": "rising" if rising else "falling"}
-    except:
-        return {"rising": None, "signal": "unknown"}
-
-# ─── INDICATORS ──────────────────────────────────────────────
-def add_indicators(df):
-    c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
-    if TA_AVAILABLE:
-        df["ema20"] = ta.trend.EMAIndicator(c, 20).ema_indicator()
-        df["ema50"] = ta.trend.EMAIndicator(c, 50).ema_indicator()
-        df["ema200"] = ta.trend.EMAIndicator(c, 200).ema_indicator()
-        df["rsi"] = ta.momentum.RSIIndicator(c, 14).rsi()
-        m = ta.trend.MACD(c)
-        df["macd_h"] = m.macd_diff()
-        df["atr"] = ta.volatility.AverageTrueRange(h, l, c, 14).average_true_range()
-    else:
-        df["ema20"] = c.ewm(span=20).mean()
-        df["ema50"] = c.ewm(span=50).mean()
-        df["ema200"] = c.ewm(span=200).mean()
-        d = c.diff()
-        g = d.clip(lower=0).rolling(14).mean()
-        ls = (-d.clip(upper=0)).rolling(14).mean()
-        df["rsi"] = 100 - (100 / (1 + g / ls))
-        fast = c.ewm(span=12).mean() - c.ewm(span=26).mean()
-        df["macd_h"] = fast - fast.ewm(span=9).mean()
-        df["atr"] = (h - l).rolling(14).mean()
-    df["vol_ma"] = v.rolling(20).mean()
-    return df
-
-# ─── TREND ANALYSIS ──────────────────────────────────────────
-def analyze_tf_trend(df):
-    if df is None or len(df) < 50:
-        return "neutral", 0, []
-
-    df = add_indicators(df)
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-    price = last["close"]
-    notes = []
-    score = 0
-    direction = "neutral"
-
-    ema20 = last["ema20"]
-    ema50 = last["ema50"]
-    ema200 = last["ema200"]
-    rsi = last["rsi"]
-    macd_h = last["macd_h"]
-    pmh = prev["macd_h"]
-
-    if price > ema200:
-        direction = "bullish"
-        score += 3
-        notes.append("Above EMA200")
-    else:
-        direction = "bearish"
-        score += 3
-        notes.append("Below EMA200")
-
-    if ema20 > ema50 > ema200:
-        score += 4
-        notes.append("EMA stack bullish")
-    elif ema20 < ema50 < ema200:
-        score += 4
-        notes.append("EMA stack bearish")
-
-    if macd_h > 0 and pmh <= 0:
-        score += 3
-        notes.append("MACD bull cross")
-    elif macd_h < 0 and pmh >= 0:
-        score += 3
-        notes.append("MACD bear cross")
-
-    return direction, score, notes
-
-# ─── DUMMY FUNCTIONS FOR COMPATIBILITY ───────────────────────
-def find_sr_zones(df, lb=100, zone_pct=0.008, min_touches=2):
+            print(f"    Failed: {e}")
+            continue
     return []
 
-def find_order_blocks(df):
-    return {"bull_ob": None, "bear_ob": None}
+def make_signal_fast(r, fr, oi):
+    d = r["direction"]
+    emoji = "🟢" if d == "LONG" else "🔴"
+    grade_names = {"A+": "🔥 A+", "B": "✅ B", "C": "⚠️ C"}
+    
+    msg = f"""{emoji} <b>#{r['symbol']} – {d}</b>
+━━━━━━━━━━━━━━━━━━━━━━━
+📊 <b>Grade: {grade_names.get(r['grade'], r['grade'])} ({r['score']}/50)</b>
+📐 Pattern: {r['candle']}
+🎯 Entry: {r['entry']}
+🛡️ SL: {r['sl']}
+📍 TP1: {r['tp1']} | TP2: {r['tp2']}
+📈 RR: {r['rr']}
 
-def find_fvg(df):
-    return {"bull_fvg": None, "bear_fvg": None}
+✅ {r['confirmations'][0]}
+✅ {r['confirmations'][1]}
 
-def check_sr_flip(df, sr_zones):
-    return {"flipped": False, "level": None, "type": None, "retest": False}
+━━━━━━━━━━━━━━━━━━━━━━━
+🤖 BaytoHunter v5.3"""
+    return msg
 
-def check_sweep(df):
-    return {"swept": False}
+def send_telegram_signal(message):
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('CHAT_ID')
+    if not token or not chat_id:
+        return False
+    try:
+        requests.post(
+            f'https://api.telegram.org/bot{token}/sendMessage',
+            json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
+            timeout=10
+        )
+        return True
+    except:
+        return False
 
-def get_pd_zone(df, lb=100):
-    return "equilibrium", 50
+def log_debug(symbol, status, reason=""):
+    """Debug log - kyun signal nahi mila"""
+    with open("debug_log.txt", "a") as f:
+        f.write(f"{datetime.now().strftime('%H:%M:%S')} | {symbol} | {status} | {reason}\n")
 
-def check_eqhl(df, lb=50, thresh=0.003):
-    return {"eqh": None, "eql": None}
+def run_scanner():
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sent = load_sent()
 
-def check_entry_zone(df, direction, sr_zones, ob, fvg):
-    return []
+    print(f"\n{'#'*56}")
+    print(f"  🔍 DEBUG SCANNER v5.3 — {now}")
+    print(f"{'#'*56}")
 
-def get_swing_points(df, lb=5):
-    return {"HH": False, "HL": False, "LH": False, "LL": False}
-
-def detect_5m_candles(df):
-    found = []
-    if len(df) < 20:
-        return found
-    c = df["close"].values
-    o = df["open"].values
-    h = df["high"].values
-    l = df["low"].values
-    high20 = max(h[-20:-1])
-    low20 = min(l[-20:-1])
-    price = c[-1]
-    prev = c[-2]
-    if prev > high20 * 0.998:
-        if abs(price - high20) / price < 0.015 and c[-1] > o[-1]:
-            found.append(("Breakout Retest Bullish", "LONG", 4))
-    if prev < low20 * 1.002:
-        if abs(price - low20) / price < 0.015 and c[-1] < o[-1]:
-            found.append(("Breakdown Retest Bearish", "SHORT", 4))
-    body3 = abs(c[-1] - o[-1])
-    body2 = abs(c[-2] - o[-2])
-    if (c[-2] < o[-2] and c[-1] > o[-1] and
-            c[-1] > o[-2] and o[-1] < c[-2] and body3 > body2):
-        found.append(("Bullish Engulfing", "LONG", 3))
-    if (c[-2] > o[-2] and c[-1] < o[-1] and
-            c[-1] < o[-2] and o[-1] > c[-2] and body3 > body2):
-        found.append(("Bearish Engulfing", "SHORT", 3))
-    return found
-
-def calc_sl_tp(price, direction, atr):
-    if direction == "LONG":
-        sl = round(price - atr * 2.0, 6)
-        tp1 = round(price + atr * 1.5, 6)
-        tp2 = round(price + atr * 3.0, 6)
-        tp3 = round(price + atr * 4.5, 6)
+    print("\n  📡 Fetching futures coins...")
+    all_syms = get_futures_symbols()
+    print(f"  ✓ Total pairs: {len(all_syms)}")
+    
+    # Get gainers
+    print(f"\n  🔍 Finding gainers > {GAINER_THRESHOLD}%...")
+    gainers_list = get_all_gainers_with_pct(all_syms)
+    gainer_symbols = [g["symbol"] for g in gainers_list]
+    
+    # Show top gainers
+    if gainers_list:
+        print(f"\n  📊 TOP 10 GAINERS TODAY:")
+        for i, g in enumerate(gainers_list[:10], 1):
+            arrow = "🚀" if g['change'] > 15 else "📈" if g['change'] > 5 else "📊"
+            print(f"     {i}. {arrow} {g['symbol']}: {g['change']:+.2f}%")
     else:
-        sl = round(price + atr * 2.0, 6)
-        tp1 = round(price - atr * 1.5, 6)
-        tp2 = round(price - atr * 3.0, 6)
-        tp3 = round(price - atr * 4.5, 6)
-    risk = abs(price - sl)
-    rr_tp2 = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
-    return sl, tp1, tp2, tp3, rr_tp2
-
-# ─── MAIN CASCADE ANALYSIS ───────────────────────────────────
-def analyze_cascade(symbol, gainers_set=None):
-    """4H → 1H → 5m cascade analysis"""
+        print(f"  ⚠️ No gainers > {GAINER_THRESHOLD}% found!")
     
-    # HTF: 4H + 1H
-    htf_dirs = {}
-    htf_scores = {}
+    # Scan list - gainers first
+    scan_list = gainer_symbols[:20]  # Sirf top 20 gainers scan karo pehle
+    if len(scan_list) < 10:
+        scan_list = get_top_volume(all_syms, 30)
     
-    for tf_label, tf_code in [("4H", "4h"), ("1H", "1h")]:
-        df = get_klines(symbol, tf_code, 150)
-        if df is None:
-            return None
-        d, s, _ = analyze_tf_trend(df)
-        htf_dirs[tf_label] = d
-        htf_scores[tf_label] = s
-        time.sleep(0.08)
+    print(f"\n  🔄 Scanning {len(scan_list)} coins...\n")
     
-    h4_dir = htf_dirs.get("4H", "neutral")
-    h1_dir = htf_dirs.get("1H", "neutral")
-    
-    if h4_dir == "neutral" and h1_dir == "neutral":
-        return None
-    
-    direction = "LONG" if (h4_dir == "bullish" or h1_dir == "bullish") else "SHORT"
-    htf_score = sum(htf_scores.values())
-    
-    # 5m Entry
-    df5 = get_klines(symbol, "5m", 200)
-    if df5 is None or len(df5) < 50:
-        return None
-    df5 = add_indicators(df5)
-    
-    price = df5["close"].iloc[-1]
-    atr = df5["atr"].iloc[-1] if "atr" in df5.columns else price * 0.005
-    
-    d5, s5, _ = analyze_tf_trend(df5)
-    if d5 not in ["neutral", h4_dir]:
-        return None
-    
-    # Candlestick pattern
-    candles = detect_5m_candles(df5)
-    matching = [c for c in candles if c[1] == direction]
-    
-    if not matching:
-        return None
-    
-    best_candle = max(matching, key=lambda x: x[2])
-    
-    # Scoring
-    score = min(htf_score, 12)
-    score += min(best_candle[2] * 2, 8)
-    
-    # Gainer bonus
-    is_gainer = bool(gainers_set and symbol in gainers_set)
-    if is_gainer:
-        score += 3
-    
-    if score < SCORE_C:
-        return None
-    
-    # SL/TP
-    sl, tp1, tp2, tp3, rr = calc_sl_tp(price, direction, atr)
-    
-    if rr < MIN_RR:
-        return None
-    
-    # Grade
-    if score >= SCORE_A:
-        grade = "A+"
-    elif score >= SCORE_B:
-        grade = "B"
-    else:
-        grade = "C"
-    
-    confirmations = [
-        f"4H {h4_dir} + 1H {h1_dir} aligned",
-        f"5m: {best_candle[0]} (strength {best_candle[2]})",
-    ]
-    if is_gainer:
-        confirmations.append("Top gainer momentum")
-    
-    return {
-        "symbol": symbol,
-        "direction": direction,
-        "grade": grade,
-        "score": score,
-        "price": round(price, 6),
-        "entry": round(price, 6),
-        "sl": sl,
-        "tp1": tp1,
-        "tp2": tp2,
-        "tp3": tp3,
-        "rr": rr,
-        "atr": round(atr, 6),
-        "candle": best_candle[0],
-        "candle_str": best_candle[2],
-        "confirmations": confirmations,
-        "h4_trend": h4_dir,
-        "h1_trend": h1_dir,
-        "is_gainer": is_gainer,
-        "pd_zone": "neutral",
-        "entry_zones": [],
-        "flip": {},
-        "sweep": {},
-        "eqhl": {},
+    results = []
+    stats = {
+        "total": 0,
+        "htf_fail": 0,
+        "no_5m_pattern": 0,
+        "low_score": 0,
+        "low_rr": 0,
+        "dup": 0
     }
+    
+    for i, sym in enumerate(scan_list[:20], 1):
+        stats["total"] += 1
+        print(f"  [{i:2}/20] Analyzing {sym:<12}... ", end="")
+        
+        # Duplicate check
+        dup_l, _ = is_dup(sent, sym, "LONG")
+        dup_s, _ = is_dup(sent, sym, "SHORT")
+        if dup_l and dup_s:
+            print("⏭️ DUPLICATE")
+            stats["dup"] += 1
+            log_debug(sym, "DUPLICATE", "Already sent recently")
+            continue
+        
+        try:
+            gainers_set = {g["symbol"] for g in gainers_list}
+            r = analyze_cascade(sym, gainers_set)
+            
+            if r is None:
+                print("❌ NO SIGNAL")
+                stats["no_5m_pattern"] += 1
+                log_debug(sym, "NO_SIGNAL", "No 5m pattern or trend mismatch")
+                continue
+            
+            # Check if score is good
+            if r['score'] < SCORE_C:
+                print(f"⚠️ LOW SCORE ({r['score']}/{SCORE_C})")
+                stats["low_score"] += 1
+                log_debug(sym, f"LOW_SCORE", f"{r['score']}/{SCORE_C}")
+                continue
+            
+            results.append(r)
+            print(f"✅ {r['direction']} | SCORE: {r['score']}/50 | {r['candle'][:15]}")
+            log_debug(sym, "SIGNAL", f"{r['direction']} score={r['score']}")
+            
+        except Exception as e:
+            print(f"❌ ERROR: {str(e)[:30]}")
+            log_debug(sym, "ERROR", str(e)[:50])
+    
+    # Print statistics
+    print(f"\n{'='*56}")
+    print(f"  📊 SCAN STATISTICS:")
+    print(f"  {'='*56}")
+    print(f"     Total coins scanned: {stats['total']}")
+    print(f"     ❌ HTF/5m pattern fail: {stats['no_5m_pattern']}")
+    print(f"     ⚠️ Low score (<{SCORE_C}): {stats['low_score']}")
+    print(f"     ⏭️ Duplicate blocked: {stats['dup']}")
+    print(f"     ✅ SIGNALS FOUND: {len(results)}")
+    print(f"  {'='*56}\n")
+    
+    # Check debug log
+    if os.path.exists("debug_log.txt"):
+        print(f"  📁 Debug log saved: debug_log.txt")
+        print(f"     Check karo kin coins mein kya issue hai\n")
+    
+    # Send signals
+    if results:
+        print(f"  📤 Sending {len(results)} signals to Telegram...")
+        for r in results[:3]:
+            fr = get_funding_rate(r["symbol"])
+            oi = get_open_interest(r["symbol"])
+            msg = make_signal_fast(r, fr, oi)
+            send_telegram_signal(msg)
+            print(f"     ✓ {r['symbol']} sent")
+            time.sleep(1)
+    
+    return results
+
+def run_continuous(mins):
+    print(f"\n  🔄 Auto scan every {mins} minutes\n")
+    while True:
+        try:
+            run_scanner()
+            print(f"\n  😴 Next scan in {mins} minutes...\n")
+            time.sleep(mins * 60)
+        except KeyboardInterrupt:
+            print("\n  👋 Stopped.\n")
+            break
+
+if __name__ == "__main__":
+    print("\n" + "="*56)
+    print("  🔍 DEBUG MODE SCANNER v5.3")
+    print("  📊 Shows WHY signals are/aren't generated")
+    print("="*56)
+    
+    print("\n  Select mode:")
+    print("    1 = Single scan (with debug)")
+    print("    2 = Every 15 min")
+    print("    3 = Every 30 min")
+    
+    choice = input("\n  👉 Choice (1/2/3): ").strip()
+    
+    if choice == "2":
+        run_continuous(15)
+    elif choice == "3":
+        run_continuous(30)
+    else:
+        run_scanner()
