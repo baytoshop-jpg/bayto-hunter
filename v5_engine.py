@@ -332,11 +332,12 @@ def check_eqhl(df, lb=50, thresh=0.003):
 # ─── 5m CANDLESTICK PATTERNS ─────────────────────────────────
 def detect_5m_candles(df):
     """
-    10 candlestick patterns — sirf 5m ke liye
-    Returns: list of (pattern_name, direction, strength)
+    Entry Detection — Breakout + Retest + Chart Patterns
+    Bull/Bear Flag, Triangle, Wedge, Double Top/Bottom
+    Support/Resistance Breakout + Retest
     """
     found = []
-    if len(df) < 4: return found
+    if len(df) < 20: return found
 
     c = df["close"].values
     o = df["open"].values
@@ -344,95 +345,123 @@ def detect_5m_candles(df):
     l = df["low"].values
     atr = df["atr"].iloc[-1] if "atr" in df.columns else abs(c[-1]-o[-1])
 
-    # Helper values — last 3 candles
-    c1,o1,h1,l1 = c[-3],o[-3],h[-3],l[-3]   # 3 candles ago
-    c2,o2,h2,l2 = c[-2],o[-2],h[-2],l[-2]   # 2 candles ago (prev)
-    c3,o3,h3,l3 = c[-1],o[-1],h[-1],l[-1]   # Last (current)
+    # Recent levels
+    high20 = max(h[-20:-1])
+    low20  = min(l[-20:-1])
+    high10 = max(h[-10:-1])
+    low10  = min(l[-10:-1])
 
-    body3   = abs(c3-o3)
-    body2   = abs(c2-o2)
-    uw3     = h3 - max(c3,o3)
-    lw3     = min(c3,o3) - l3
-    total3  = h3-l3
+    price  = c[-1]
+    prev   = c[-2]
 
-    # ── 1. HAMMER (Bullish) ──────────────────────────────────
-    # Long lower wick, small body at top, prev trend down
-    if (lw3 > body3*2 and lw3 > uw3*2 and
-            total3 > atr*0.5 and c2 < o2):
-        found.append(("Hammer", "LONG", 3))
+    # ── 1. BREAKOUT + RETEST (S/R) ───────────────────────
+    # Bullish: price ne resistance break kiya — ab retest
+    if prev > high20 * 0.998:  # recently broke above
+        if abs(price - high20) / price < 0.015:  # retesting
+            if c[-1] > o[-1]:  # bullish candle on retest
+                found.append(("Breakout Retest Bullish", "LONG", 4))
 
-    # ── 2. INVERTED HAMMER / SHOOTING STAR ──────────────────
-    if uw3 > body3*2 and uw3 > lw3*2 and total3 > atr*0.5:
-        if c2 < o2:   # After downtrend = inverted hammer (bullish)
-            found.append(("Inverted Hammer","LONG",3))
-        elif c2 > o2: # After uptrend = shooting star (bearish)
-            found.append(("Shooting Star","SHORT",3))
+    # Bearish: price ne support break kiya — ab retest
+    if prev < low20 * 1.002:
+        if abs(price - low20) / price < 0.015:
+            if c[-1] < o[-1]:  # bearish candle on retest
+                found.append(("Breakdown Retest Bearish", "SHORT", 4))
 
-    # ── 3. HANGING MAN (Bearish — hammer shape in uptrend) ──
-    if (lw3 > body3*2 and lw3 > uw3*2 and
-            total3 > atr*0.5 and c2 > o2):
-        found.append(("Hanging Man","SHORT",3))
+    # ── 2. BULL FLAG ─────────────────────────────────────
+    # Strong up move + tight consolidation + breakout
+    pole_up   = (c[-10] - c[-18]) / c[-18] if c[-18] > 0 else 0
+    consol    = (max(h[-8:-1]) - min(l[-8:-1])) / price if price > 0 else 1
+    if pole_up > 0.03 and consol < 0.02:
+        if price > max(h[-8:-1]):  # breakout of flag
+            found.append(("Bull Flag Breakout", "LONG", 4))
+        elif abs(price - max(h[-8:-1])) / price < 0.01:  # retesting flag top
+            found.append(("Bull Flag Retest", "LONG", 3))
 
-    # ── 4. BULLISH ENGULFING ─────────────────────────────────
-    if (c2<o2 and c3>o3 and
-            o3<=c2 and c3>=o2 and
-            body3 > body2*1.1):
-        found.append(("Bullish Engulfing","LONG",3))
+    # ── 3. BEAR FLAG ─────────────────────────────────────
+    pole_dn   = (c[-18] - c[-10]) / c[-18] if c[-18] > 0 else 0
+    if pole_dn > 0.03 and consol < 0.02:
+        if price < min(l[-8:-1]):  # breakdown of flag
+            found.append(("Bear Flag Breakdown", "SHORT", 4))
+        elif abs(price - min(l[-8:-1])) / price < 0.01:
+            found.append(("Bear Flag Retest", "SHORT", 3))
 
-    # ── 5. BEARISH ENGULFING ─────────────────────────────────
-    if (c2>o2 and c3<o3 and
-            o3>=c2 and c3<=o2 and
-            body3 > body2*1.1):
-        found.append(("Bearish Engulfing","SHORT",3))
+    # ── 4. ASCENDING TRIANGLE ────────────────────────────
+    # Flat resistance + rising lows + breakout
+    h_last  = h[-15:]
+    l_last  = l[-15:]
+    h_flat  = (max(h_last) - min(h_last)) / max(h_last) < 0.015
+    l_slope = (l_last[-1] - l_last[0]) / len(l_last)
+    if h_flat and l_slope > 0:
+        if price > max(h_last) * 0.998:  # breakout
+            found.append(("Ascending Triangle Breakout", "LONG", 4))
 
-    # ── 6. DOJI ──────────────────────────────────────────────
-    if body3 < total3*0.1 and total3 > atr*0.3:
-        found.append(("Doji","reversal",2))
+    # ── 5. DESCENDING TRIANGLE ───────────────────────────
+    l_flat  = (max(l_last) - min(l_last)) / max(l_last) < 0.015
+    h_slope = (h_last[-1] - h_last[0]) / len(h_last)
+    if l_flat and h_slope < 0:
+        if price < min(l_last) * 1.002:  # breakdown
+            found.append(("Descending Triangle Breakdown", "SHORT", 4))
 
-    # ── 7. DRAGONFLY DOJI (Bullish) ──────────────────────────
-    if (body3 < total3*0.1 and lw3 > total3*0.6 and
-            uw3 < total3*0.1):
-        found.append(("Dragonfly Doji","LONG",2))
+    # ── 6. BULL WEDGE (Falling Wedge) ────────────────────
+    # Both highs and lows falling but converging — bullish breakout
+    h5 = h[-10:]
+    l5 = l[-10:]
+    import numpy as np
+    h_slope5 = np.polyfit(range(len(h5)), h5, 1)[0]
+    l_slope5 = np.polyfit(range(len(l5)), l5, 1)[0]
+    wedge_w  = (h5[-1]-l5[-1])
+    wedge_w0 = (h5[0] -l5[0])
+    converging = wedge_w < wedge_w0 * 0.7  # narrowing
 
-    # ── 8. GRAVESTONE DOJI (Bearish) ─────────────────────────
-    if (body3 < total3*0.1 and uw3 > total3*0.6 and
-            lw3 < total3*0.1):
-        found.append(("Gravestone Doji","SHORT",2))
+    if h_slope5 < 0 and l_slope5 < 0 and converging:
+        if c[-1] > o[-1] and price > max(h5[-3:]):
+            found.append(("Falling Wedge Breakout", "LONG", 3))
 
-    # ── 9. MORNING STAR (3-candle, Bullish) ──────────────────
-    # c1 bearish, c2 small body (indecision), c3 bullish
-    if (c1<o1 and                              # Candle 1 bearish
-            abs(c2-o2) < abs(c1-o1)*0.5 and   # Candle 2 small
-            c3>o3 and                          # Candle 3 bullish
-            c3 > (c1+o1)/2):                   # Close above midpoint
-        found.append(("Morning Star","LONG",4))
+    if h_slope5 > 0 and l_slope5 > 0 and converging:
+        if c[-1] < o[-1] and price < min(l5[-3:]):
+            found.append(("Rising Wedge Breakdown", "SHORT", 3))
 
-    # ── 10. EVENING STAR (3-candle, Bearish) ─────────────────
-    if (c1>o1 and
-            abs(c2-o2) < abs(c1-o1)*0.5 and
-            c3<o3 and
-            c3 < (c1+o1)/2):
-        found.append(("Evening Star","SHORT",4))
+    # ── 7. DOUBLE BOTTOM ─────────────────────────────────
+    l50 = l[-50:]
+    troughs = [(i, l50[i]) for i in range(2, len(l50)-2)
+               if l50[i] == min(l50[i-2:i+3])]
+    if len(troughs) >= 2:
+        t1, t2 = troughs[-2], troughs[-1]
+        if abs(t1[1]-t2[1])/t1[1] < 0.015 and t2[0]-t1[0] > 5:
+            neck = max(h[-50:][t1[0]:t2[0]+1]) if t2[0]>t1[0] else price
+            if price > neck * 1.001:
+                found.append(("Double Bottom Breakout", "LONG", 4))
 
-    # ── 11. PIERCING LINE (Bullish) ──────────────────────────
-    if (c2<o2 and c3>o3 and
-            o3<c2 and c3>(o2+c2)/2 and c3<o2):
-        found.append(("Piercing Line","LONG",2))
+    # ── 8. DOUBLE TOP ────────────────────────────────────
+    h50 = h[-50:]
+    peaks = [(i, h50[i]) for i in range(2, len(h50)-2)
+             if h50[i] == max(h50[i-2:i+3])]
+    if len(peaks) >= 2:
+        p1, p2 = peaks[-2], peaks[-1]
+        if abs(p1[1]-p2[1])/p1[1] < 0.015 and p2[0]-p1[0] > 5:
+            neck = min(l[-50:][p1[0]:p2[0]+1]) if p2[0]>p1[0] else price
+            if price < neck * 0.999:
+                found.append(("Double Top Breakdown", "SHORT", 4))
 
-    # ── 12. DARK CLOUD COVER (Bearish) ───────────────────────
-    if (c2>o2 and c3<o3 and
-            o3>c2 and c3<(o2+c2)/2 and c3>o2):
-        found.append(("Dark Cloud Cover","SHORT",2))
+    # ── 9. ENGULFING (quick entry confirmation) ───────────
+    body3 = abs(c[-1]-o[-1])
+    body2 = abs(c[-2]-o[-2])
+    if (c[-2]<o[-2] and c[-1]>o[-1] and
+            c[-1]>o[-2] and o[-1]<c[-2] and body3>body2):
+        found.append(("Bullish Engulfing", "LONG", 3))
+    if (c[-2]>o[-2] and c[-1]<o[-1] and
+            c[-1]<o[-2] and o[-1]>c[-2] and body3>body2):
+        found.append(("Bearish Engulfing", "SHORT", 3))
 
-    # ── 13. TWEEZER BOTTOM (Bullish) ─────────────────────────
-    if (c2<o2 and c3>o3 and
-            abs(l2-l3)/max(l2,l3,0.0001)<0.002):
-        found.append(("Tweezer Bottom","LONG",2))
-
-    # ── 14. TWEEZER TOP (Bearish) ────────────────────────────
-    if (c2>o2 and c3<o3 and
-            abs(h2-h3)/max(h2,h3,0.0001)<0.002):
-        found.append(("Tweezer Top","SHORT",2))
+    # ── 10. HAMMER / SHOOTING STAR ───────────────────────
+    uw = h[-1] - max(c[-1],o[-1])
+    lw = min(c[-1],o[-1]) - l[-1]
+    tot = h[-1]-l[-1]
+    if tot > 0:
+        if lw > body3*2 and lw > uw*2 and c[-2]<o[-2]:
+            found.append(("Hammer Reversal", "LONG", 3))
+        if uw > body3*2 and uw > lw*2 and c[-2]>o[-2]:
+            found.append(("Shooting Star", "SHORT", 3))
 
     return found
 
