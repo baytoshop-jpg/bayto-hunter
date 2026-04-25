@@ -45,21 +45,46 @@ PATTERN_STRENGTH = {
 
 # ─── BINANCE API ─────────────────────────────────────────────
 def get_futures_symbols():
-    try:
-        r = requests.get(f"{FAPI}/fapi/v1/exchangeInfo", timeout=15)
-        return sorted([s["symbol"] for s in r.json()["symbols"]
-            if s["quoteAsset"]=="USDT"
-            and s["status"]=="TRADING"
-            and s["contractType"]=="PERPETUAL"])
-    except:
-        return return ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
+    for attempt in range(3):  # 3 baar try karo
+        try:
+            r = requests.get(f"{FAPI}/fapi/v1/exchangeInfo", timeout=30)
+            syms = [
+                s["symbol"] for s in r.json()["symbols"]
+                if s["quoteAsset"]=="USDT"
+                and s["status"]=="TRADING"
+                and s["contractType"]=="PERPETUAL"
+            ]
+            if len(syms) > 50:  # confirmed real data
+                print(f"  Binance API: {len(syms)} pairs mile!")
+                return sorted(syms)
+        except Exception as e:
+            print(f"  Attempt {attempt+1} failed: {e}")
+            time.sleep(3)
+    
+    # Fallback — 400+ coins
+    print("  API nahi mili — large fallback list use ho rahi hai")
+    return [
+        "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
         "ADAUSDT","AVAXUSDT","DOGEUSDT","LINKUSDT","DOTUSDT",
         "MATICUSDT","LTCUSDT","ATOMUSDT","NEARUSDT","APTUSDT",
         "ARBUSDT","OPUSDT","INJUSDT","SUIUSDT","TIAUSDT",
         "WIFUSDT","PEPEUSDT","SHIBUSDT","TONUSDT","FETUSDT",
-        "RENDERUSDT","STXUSDT","RUNEUSDT","LDOUSDT","GTCUSDT",
-        "ORDIUSDT","SEIUSDT","TRBUSDT","WLDUSDT","BLURUSDT",
-        "CFXUSDT","HOOKUSDT","MAGICUSDT","HIGHUSDT","AMBUSDT"]
+        "RENDERUSDT","STXUSDT","RUNEUSDT","LDOUSDT","ORDIUSDT",
+        "SEIUSDT","TRBUSDT","WLDUSDT","BLURUSDT","CFXUSDT",
+        "HOOKUSDT","MAGICUSDT","HIGHUSDT","GTCUSDT","AMBUSDT",
+        "JASMYUSDT","CKBUSDT","ARKMUSDT","TRUUSDT","LPTUSDT",
+        "BAKEUSDT","COTIUSDT","STORJUSDT","BANDUSDT","CRVUSDT",
+        "AAVEUSDT","UNIUSDT","MKRUSDT","COMPUSDT","SNXUSDT",
+        "GRTUSDT","ENJUSDT","MANAUSDT","SANDUSDT","AXSUSDT",
+        "GALAUSDT","IMXUSDT","APEUSDT","GMTUSDT","STGUSDT",
+        "DYDXUSDT","MASKUSDT","LRCUSDT","ZRXUSDT","BALUSDT",
+        "KAVAUSDT","OCEANUSDT","CELOUSDT","ANKRUSDT","ALICEUSDT",
+        "FLMUSDT","RAYUSDT","SXPUSDT","CTKUSDT","XVGUSDT",
+        "IOTAUSDT","ZENUSDT","KSMUSDT","BNTUSDT","WRXUSDT",
+        "WOOUSDT","DARUSDT","BICOUSDT","GALUSDT","RNDRUSDT",
+        "APTUSDT","FXSUSDT","HOOKUSDT","MAGICUSDT","TUSDT",
+        "HFTUSDT","PHBUSDT","AGIXUSDT","CFXUSDT","AMBUSDT",
+    ]
 
 def get_top_volume(all_syms, top_n=50):
     try:
