@@ -579,13 +579,10 @@ def analyze_cascade(symbol, gainers_set=None):
     h4_dir = htf_dirs.get("4H","neutral")
     h1_dir = htf_dirs.get("1H","neutral")
 
-    if h4_dir == "neutral" or h1_dir == "neutral":
-        return None
     if h4_dir == "neutral" and h1_dir == "neutral":
     return None
-direction = "LONG" if (h4_dir=="bullish" or h1_dir=="bullish") else "SHORT"   # HTF conflict — skip
 
-    direction = "LONG" if h4_dir=="bullish" else "SHORT"
+direction = "LONG" if (h4_dir=="bullish" or h1_dir=="bullish") else "SHORT"
     htf_score = sum(htf_scores.values())
 
     # ── STEP 2: 30m + 15m CONFIRMATION (MTF) ─────────────────
