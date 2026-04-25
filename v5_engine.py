@@ -52,8 +52,14 @@ def get_futures_symbols():
             and s["status"]=="TRADING"
             and s["contractType"]=="PERPETUAL"])
     except:
-        return ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
-                "ADAUSDT","AVAXUSDT","DOGEUSDT","LINKUSDT","DOTUSDT"]
+        return return ["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
+        "ADAUSDT","AVAXUSDT","DOGEUSDT","LINKUSDT","DOTUSDT",
+        "MATICUSDT","LTCUSDT","ATOMUSDT","NEARUSDT","APTUSDT",
+        "ARBUSDT","OPUSDT","INJUSDT","SUIUSDT","TIAUSDT",
+        "WIFUSDT","PEPEUSDT","SHIBUSDT","TONUSDT","FETUSDT",
+        "RENDERUSDT","STXUSDT","RUNEUSDT","LDOUSDT","GTCUSDT",
+        "ORDIUSDT","SEIUSDT","TRBUSDT","WLDUSDT","BLURUSDT",
+        "CFXUSDT","HOOKUSDT","MAGICUSDT","HIGHUSDT","AMBUSDT"]
 
 def get_top_volume(all_syms, top_n=50):
     try:
@@ -550,8 +556,9 @@ def analyze_cascade(symbol, gainers_set=None):
 
     if h4_dir == "neutral" or h1_dir == "neutral":
         return None
-    if h4_dir != h1_dir and h4_dir != "neutral":
-        return None   # HTF conflict — skip
+    if h4_dir == "neutral" and h1_dir == "neutral":
+    return None
+direction = "LONG" if (h4_dir=="bullish" or h1_dir=="bullish") else "SHORT"   # HTF conflict — skip
 
     direction = "LONG" if h4_dir=="bullish" else "SHORT"
     htf_score = sum(htf_scores.values())
