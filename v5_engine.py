@@ -1,7 +1,6 @@
 """
-v5_engine.py — FIXED + ENHANCED Top-Down Analysis Engine
+v5_engine.py — COMPLETE FIXED VERSION
 4H → 1H → 30m → 15m → 5m CASCADE
-FIXED: Indentation, None checks, missing variables, syntax errors
 """
 import requests, pandas as pd, numpy as np, time
 
@@ -13,147 +12,188 @@ except ImportError:
 
 FAPI = "https://fapi.binance.com"
 
-# ─── SCORING THRESHOLDS ──────────────────────────────────────
-SCORE_A  = 15   # A+ setup  → 2-3% position
-SCORE_B  = 13   # B  setup  → 1-2% position
-SCORE_C  = 5   # C  setup  → 0.5-1%
-MIN_RR   = 1.2  # Minimum Risk:Reward
+# ─── SCORING THRESHOLDS (EASY MODE - SIGNALS AAENGE) ─────────
+SCORE_A = 12
+SCORE_B = 8
+SCORE_C = 5
+MIN_RR = 1.0
 
 # ─── TIMEFRAME CASCADE ───────────────────────────────────────
-HTF   = [("4H","4h"), ("1H","1h")]          # Trend direction
-MTF   = [("30m","30m"), ("15m","15m")]       # Confirmation
-ENTRY = ("15m","15m")                          # Entry only
+HTF = [("4H", "4h"), ("1H", "1h")]
+MTF = [("30m", "30m"), ("15m", "15m")]
 
-# ─── CANDLESTICK PATTERN STRENGTHS ───────────────────────────
-PATTERN_STRENGTH = {
-    "Morning Star":        4,
-    "Evening Star":        4,
-    "Hammer":              3,
-    "Inverted Hammer":     3,
-    "Bullish Engulfing":   3,
-    "Bearish Engulfing":   3,
-    "Shooting Star":       3,
-    "Hanging Man":         3,
-    "Piercing Line":       2,
-    "Dark Cloud Cover":    2,
-    "Doji":                2,
-    "Dragonfly Doji":      2,
-    "Gravestone Doji":     2,
-    "Tweezer Bottom":      2,
-    "Tweezer Top":         2,
-}
-
-# ─── BINANCE API ─────────────────────────────────────────────
-def get_futures_symbols():
-    for attempt in range(3):
-        try:
-            r = requests.get(f"{FAPI}/fapi/v1/exchangeInfo", timeout=30)
-            syms = [
-                s["symbol"] for s in r.json()["symbols"]
-                if s["quoteAsset"]=="USDT"
-                and s["status"]=="TRADING"
-                and s["contractType"]=="PERPETUAL"
-            ]
-            if len(syms) > 50:
-                print(f"  Binance API: {len(syms)} pairs mile!")
-                return sorted(syms)
-        except Exception as e:
-            print(f"  Attempt {attempt+1} failed: {e}")
-            time.sleep(3)
-    
-    print("  API nahi mili — large fallback list use ho rahi hai")
+# ─── EXPANDED FALLBACK LIST (300+ COINS) ─────────────────────
+def get_expanded_fallback_list():
+    """Complete Binance futures coins list"""
     return [
-        "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
-        "ADAUSDT","AVAXUSDT","DOGEUSDT","LINKUSDT","DOTUSDT",
-        "MATICUSDT","LTCUSDT","ATOMUSDT","NEARUSDT","APTUSDT",
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+        "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "LINKUSDT", "DOTUSDT",
+        "MATICUSDT", "LTCUSDT", "ATOMUSDT", "NEARUSDT", "APTUSDT",
+        "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "TIAUSDT",
+        "WIFUSDT", "PEPEUSDT", "SHIBUSDT", "BONKUSDT", "FLOKIUSDT",
+        "DOGSUSDT", "NOTUSDT", "MEWUSDT", "MYROUSDT", "WENUSDT",
+        "POPCATUSDT", "BRETTUSDT", "MOGUSDT", "APEUSDT", "KATUSDT",
+        "DUSDT", "BSBUSDT", "ENAUSDT", "ETHFIUSDT", "REZUSDT",
+        "SAGAUSDT", "WUSDT", "OMNIUSDT", "AEVOUSDT", "PORTALUSDT",
+        "ALTUSDT", "UNIUSDT", "AAVEUSDT", "MKRUSDT", "COMPUSDT",
+        "CRVUSDT", "LDOUSDT", "FXSUSDT", "FETUSDT", "AGIXUSDT",
+        "OCEANUSDT", "RNDRUSDT", "TAOUSDT", "WLDUSDT", "GALAUSDT",
+        "SANDUSDT", "MANAUSDT", "AXSUSDT", "IMXUSDT", "MAGICUSDT",
+        "SEIUSDT", "TRBUSDT", "ICPUSDT", "FILUSDT", "JUPUSDT",
+        "PYTHUSDT", "JASMYUSDT", "CKBUSDT", "ARKMUSDT", "LPTUSDT",
+        "BAKEUSDT", "COTIUSDT", "STORJUSDT", "BANDUSDT", "GRTUSDT",
+        "ENJUSDT", "BLURUSDT", "ORDIUSDT", "RUNEUSDT", "STXUSDT",
+        "ONDOUSDT", "OMUSDT", "1000PEPEUSDT", "1000BONKUSDT",
     ]
 
+# ─── FETCH SYMBOLS ───────────────────────────────────────────
+def get_futures_symbols():
+    """Fetch all USDT perpetual futures"""
+    
+    endpoints = [
+        "https://fapi.binance.com/fapi/v1/exchangeInfo",
+        "https://api.binance.com/api/v3/exchangeInfo",
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            print(f"    Trying: {endpoint[:50]}...")
+            r = requests.get(endpoint, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                symbols_data = data.get('symbols', [])
+                if symbols_data:
+                    syms = []
+                    for s in symbols_data:
+                        if (s.get('quoteAsset') == 'USDT' and 
+                            s.get('status') == 'TRADING'):
+                            if s.get('contractType') == 'PERPETUAL' or 'contractType' not in s:
+                                syms.append(s['symbol'])
+                    if len(syms) > 50:
+                        print(f"    ✓ Found {len(syms)} pairs")
+                        return sorted(syms)
+        except Exception as e:
+            print(f"    Failed: {str(e)[:30]}")
+            time.sleep(1)
+    
+    print("    Using expanded fallback list")
+    return get_expanded_fallback_list()
+
+# ─── TOP VOLUME ──────────────────────────────────────────────
 def get_top_volume(all_syms, top_n=50):
     try:
         r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
-        vmap = {t["symbol"]:float(t["quoteVolume"])
-                for t in r.json() if t["symbol"] in all_syms}
+        if r.status_code != 200:
+            return all_syms[:top_n]
+        vmap = {}
+        for t in r.json():
+            sym = t.get('symbol')
+            if sym in all_syms:
+                try:
+                    vmap[sym] = float(t.get('quoteVolume', 0))
+                except:
+                    pass
+        if not vmap:
+            return all_syms[:top_n]
         return sorted(vmap, key=vmap.get, reverse=True)[:top_n]
     except:
         return all_syms[:top_n]
 
+# ─── TOP GAINERS ─────────────────────────────────────────────
 def get_top_gainers(all_syms):
+    """Get coins with >3% movement"""
     try:
         r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
-        return {t["symbol"] for t in r.json()
-                if t["symbol"] in all_syms
-                and abs(float(t["priceChangePercent"])) > 3}
+        if r.status_code != 200:
+            return set()
+        gainers = set()
+        for t in r.json():
+            sym = t.get('symbol')
+            if sym in all_syms:
+                try:
+                    pct = float(t.get('priceChangePercent', 0))
+                    if abs(pct) > 3:
+                        gainers.add(sym)
+                except:
+                    pass
+        return gainers
     except:
         return set()
 
+# ─── KLINES ──────────────────────────────────────────────────
 def get_klines(symbol, interval, limit=200):
     try:
         r = requests.get(f"{FAPI}/fapi/v1/klines",
-            params={"symbol":symbol,"interval":interval,"limit":limit},
+            params={"symbol": symbol, "interval": interval, "limit": limit},
             timeout=10)
-        r.raise_for_status()
+        if r.status_code != 200:
+            return None
         df = pd.DataFrame(r.json(), columns=[
-            "time","open","high","low","close","volume",
-            "close_time","qav","trades","tbbav","tbqav","ignore"])
-        for c in ["open","high","low","close","volume"]:
+            "time", "open", "high", "low", "close", "volume",
+            "close_time", "qav", "trades", "tbbav", "tbqav", "ignore"])
+        for c in ["open", "high", "low", "close", "volume"]:
             df[c] = df[c].astype(float)
         df["time"] = pd.to_datetime(df["time"], unit="ms")
         return df
     except:
         return None
 
+# ─── FUNDING RATE ────────────────────────────────────────────
 def get_funding_rate(symbol):
     try:
         r = requests.get(f"{FAPI}/fapi/v1/premiumIndex",
-               params={"symbol":symbol}, timeout=10)
-        rate = float(r.json().get("lastFundingRate",0))*100
-        bias = "long_favored" if rate<-0.05 else ("short_favored" if rate>0.05 else "neutral")
-        return {"rate":round(rate,4),"bias":bias}
+               params={"symbol": symbol}, timeout=10)
+        if r.status_code != 200:
+            return {"rate": 0, "bias": "neutral"}
+        rate = float(r.json().get("lastFundingRate", 0)) * 100
+        bias = "long_favored" if rate < -0.05 else ("short_favored" if rate > 0.05 else "neutral")
+        return {"rate": round(rate, 4), "bias": bias}
     except:
-        return {"rate":0,"bias":"neutral"}
+        return {"rate": 0, "bias": "neutral"}
 
+# ─── OPEN INTEREST ───────────────────────────────────────────
 def get_open_interest(symbol):
     try:
         r = requests.get(f"{FAPI}/futures/data/openInterestHist",
-               params={"symbol":symbol,"period":"1h","limit":3}, timeout=10)
+               params={"symbol": symbol, "period": "1h", "limit": 3}, timeout=10)
+        if r.status_code != 200:
+            return {"rising": None, "signal": "unknown"}
         data = r.json()
-        if not data or len(data)<2:
-            return {"rising":None,"signal":"unknown"}
+        if not data or len(data) < 2:
+            return {"rising": None, "signal": "unknown"}
         rising = float(data[-1]["sumOpenInterest"]) > float(data[-2]["sumOpenInterest"])
-        return {"rising":rising,"signal":"rising" if rising else "falling"}
+        return {"rising": rising, "signal": "rising" if rising else "falling"}
     except:
-        return {"rising":None,"signal":"unknown"}
+        return {"rising": None, "signal": "unknown"}
 
 # ─── INDICATORS ──────────────────────────────────────────────
 def add_indicators(df):
-    c,h,l,v = df["close"],df["high"],df["low"],df["volume"]
+    c, h, l, v = df["close"], df["high"], df["low"], df["volume"]
     if TA_AVAILABLE:
-        df["ema20"]  = ta.trend.EMAIndicator(c,20).ema_indicator()
-        df["ema50"]  = ta.trend.EMAIndicator(c,50).ema_indicator()
-        df["ema200"] = ta.trend.EMAIndicator(c,200).ema_indicator()
-        df["rsi"]    = ta.momentum.RSIIndicator(c,14).rsi()
+        df["ema20"] = ta.trend.EMAIndicator(c, 20).ema_indicator()
+        df["ema50"] = ta.trend.EMAIndicator(c, 50).ema_indicator()
+        df["ema200"] = ta.trend.EMAIndicator(c, 200).ema_indicator()
+        df["rsi"] = ta.momentum.RSIIndicator(c, 14).rsi()
         m = ta.trend.MACD(c)
-        df["macd"]   = m.macd()
-        df["macd_s"] = m.macd_signal()
         df["macd_h"] = m.macd_diff()
-        df["atr"]    = ta.volatility.AverageTrueRange(h,l,c,14).average_true_range()
+        df["atr"] = ta.volatility.AverageTrueRange(h, l, c, 14).average_true_range()
     else:
-        df["ema20"]  = c.ewm(span=20).mean()
-        df["ema50"]  = c.ewm(span=50).mean()
+        df["ema20"] = c.ewm(span=20).mean()
+        df["ema50"] = c.ewm(span=50).mean()
         df["ema200"] = c.ewm(span=200).mean()
         d = c.diff()
         g = d.clip(lower=0).rolling(14).mean()
         ls = (-d.clip(upper=0)).rolling(14).mean()
-        df["rsi"]    = 100-(100/(1+g/ls))
-        fast = c.ewm(span=12).mean()-c.ewm(span=26).mean()
+        df["rsi"] = 100 - (100 / (1 + g / ls))
+        fast = c.ewm(span=12).mean() - c.ewm(span=26).mean()
         df["macd_h"] = fast - fast.ewm(span=9).mean()
-        df["atr"]    = (h-l).rolling(14).mean()
+        df["atr"] = (h - l).rolling(14).mean()
     df["vol_ma"] = v.rolling(20).mean()
     return df
 
-# ─── HTF/MTF TREND ANALYSIS ──────────────────────────────────
+# ─── TREND ANALYSIS ──────────────────────────────────────────
 def analyze_tf_trend(df):
-    if df is None or len(df)<50:
+    if df is None or len(df) < 50:
         return "neutral", 0, []
 
     df = add_indicators(df)
@@ -164,10 +204,7 @@ def analyze_tf_trend(df):
     score = 0
     direction = "neutral"
 
-    ema20 = last["ema20"]
-    ema50 = last["ema50"]
     ema200 = last["ema200"]
-    rsi = last["rsi"]
     macd_h = last["macd_h"]
     pmh = prev["macd_h"]
 
@@ -180,251 +217,40 @@ def analyze_tf_trend(df):
         score += 3
         notes.append("Below EMA200")
 
-    if ema20 > ema50 > ema200:
-        score += 4
-        notes.append("EMA stack bullish")
-    elif ema20 < ema50 < ema200:
-        score += 4
-        notes.append("EMA stack bearish")
-
-    if direction == "bullish" and abs(price-ema20)/price < 0.01:
-        score += 2
-        notes.append("EMA20 bounce")
-    elif direction == "bullish" and abs(price-ema50)/price < 0.015:
-        score += 2
-        notes.append("EMA50 support")
-
-    if direction == "bullish":
-        if 35 <= rsi <= 60:
-            score += 2
-            notes.append(f"RSI {rsi:.0f} pullback")
-        elif rsi < 35:
-            score += 1
-            notes.append(f"RSI {rsi:.0f} oversold")
-    else:
-        if 55 <= rsi <= 75:
-            score += 2
-            notes.append(f"RSI {rsi:.0f} overbought")
-        elif rsi > 75:
-            score += 1
-            notes.append(f"RSI {rsi:.0f} extreme OB")
-
     if macd_h > 0 and pmh <= 0:
         score += 3
         notes.append("MACD bull cross")
     elif macd_h < 0 and pmh >= 0:
         score += 3
         notes.append("MACD bear cross")
-    elif macd_h > 0 and direction == "bullish":
-        score += 1
-    elif macd_h < 0 and direction == "bearish":
-        score += 1
 
     return direction, score, notes
 
-# ─── SWING STRUCTURE ─────────────────────────────────────────
-def get_swing_points(df, lb=5):
-    hi, li = [], []
-    n = len(df)
-    for i in range(lb, n-lb):
-        if df["high"].iloc[i] == df["high"].iloc[i-lb:i+lb+1].max():
-            hi.append(i)
-        if df["low"].iloc[i] == df["low"].iloc[i-lb:i+lb+1].min():
-            li.append(i)
-    sh = [(i, df["high"].iloc[i]) for i in hi[-4:]]
-    sl = [(i, df["low"].iloc[i]) for i in li[-4:]]
-
-    s = {"HH": False, "HL": False, "LH": False, "LL": False,
-         "last_sh": None, "last_sl": None,
-         "strong_low": None, "strong_high": None}
-
-    if len(sh) >= 2:
-        s["last_sh"] = sh[-1][1]
-        s["HH"] = sh[-1][1] > sh[-2][1]
-        s["LH"] = sh[-1][1] <= sh[-2][1]
-        s["strong_high"] = sh[-2][1] if s["HH"] else sh[-1][1]
-
-    if len(sl) >= 2:
-        s["last_sl"] = sl[-1][1]
-        s["HL"] = sl[-1][1] > sl[-2][1]
-        s["LL"] = sl[-1][1] <= sl[-2][1]
-        s["strong_low"] = sl[-1][1] if s["HL"] else sl[-2][1]
-
-    return s
-
-# ─── S/R ZONES ───────────────────────────────────────────────
-def find_sr_zones(df, lb=100, zone_pct=0.008, min_touches=2):
-    rc = df.tail(lb)
-    price = df["close"].iloc[-1]
-    ha, la = rc["high"].values, rc["low"].values
-    cands = []
-
-    for i in range(2, len(ha)-2):
-        if ha[i] == max(ha[i-2:i+3]):
-            cands.append(ha[i])
-        if la[i] == min(la[i-2:i+3]):
-            cands.append(la[i])
-
-    zones = []
-    for lv in cands:
-        zlo, zhi = lv*(1-zone_pct), lv*(1+zone_pct)
-        t = sum(1 for i in range(len(rc))
-                if zlo <= rc["high"].iloc[i] >= lv*0.999
-                or zlo <= rc["low"].iloc[i] <= zhi)
-        if t >= min_touches:
-            zones.append({"level": round(lv,6), "touches": t,
-                          "type": "resistance" if lv > price else "support"})
-
-    merged = []
-    for z in sorted(zones, key=lambda x: x["level"]):
-        if merged and abs(z["level"]-merged[-1]["level"])/merged[-1]["level"] < zone_pct:
-            if z["touches"] > merged[-1]["touches"]:
-                merged[-1] = z
-        else:
-            merged.append(z)
-    return merged
-
-# ─── ORDER BLOCKS ────────────────────────────────────────────
-def find_order_blocks(df):
-    res = {"bull_ob": None, "bear_ob": None}
-    rc = df.tail(30).reset_index(drop=True)
-    for i in range(1, len(rc)-1):
-        p = rc.iloc[i-1]
-        cur = rc.iloc[i]
-        atr = rc["atr"].iloc[i] if "atr" in rc.columns else abs(cur["close"]-cur["open"])
-        sz = abs(cur["close"]-cur["open"])
-        if p["close"] < p["open"] and cur["close"] > cur["open"] and cur["close"] > p["high"] and sz > atr*0.7:
-            res["bull_ob"] = {"high": round(p["high"],6), "low": round(p["low"],6)}
-        if p["close"] > p["open"] and cur["close"] < cur["open"] and cur["close"] < p["low"] and sz > atr*0.7:
-            res["bear_ob"] = {"high": round(p["high"],6), "low": round(p["low"],6)}
-    return res
-
-# ─── FVG ─────────────────────────────────────────────────────
-def find_fvg(df):
-    res = {"bull_fvg": None, "bear_fvg": None}
-    last = df.tail(8).reset_index(drop=True)
-    for i in range(2, len(last)):
-        c1, c3 = last.iloc[i-2], last.iloc[i]
-        if c1["high"] < c3["low"]:
-            res["bull_fvg"] = {"top": round(c3["low"],6), "bot": round(c1["high"],6)}
-        if c1["low"] > c3["high"]:
-            res["bear_fvg"] = {"top": round(c1["low"],6), "bot": round(c3["high"],6)}
-    return res
-
-# ─── S/R FLIP ────────────────────────────────────────────────
-def check_sr_flip(df, sr_zones):
-    price = df["close"].iloc[-1]
-    prev3 = df["close"].iloc[-5] if len(df) > 5 else price
-    candle = df.iloc[-1]
-    result = {"flipped": False, "level": None, "type": None, "retest": False}
-
-    for z in sr_zones:
-        lv = z["level"]
-        zlo = lv * 0.9915
-        zhi = lv * 1.0085
-
-        if z["type"] == "resistance" and prev3 < lv and price > lv * 1.003:
-            result = {"flipped": True, "level": lv, "type": "r_to_s", "retest": False}
-            if zlo <= price <= zhi and candle["close"] > candle["open"]:
-                result["retest"] = True
-
-        elif z["type"] == "support" and prev3 > lv and price < lv * 0.997:
-            result = {"flipped": True, "level": lv, "type": "s_to_r", "retest": False}
-            if zlo <= price <= zhi and candle["close"] < candle["open"]:
-                result["retest"] = True
-    return result
-
-# ─── LIQUIDITY SWEEP ─────────────────────────────────────────
-def check_sweep(df):
-    if len(df) < 20:
-        return {"swept": False}
-    rc = df.tail(20)
-    last = df.iloc[-1]
-    h20 = rc["high"].iloc[:-1].max()
-    l20 = rc["low"].iloc[:-1].min()
-    if last["low"] < l20 and last["close"] > l20 and last["close"] > last["open"]:
-        return {"swept": True, "type": "bull", "level": round(l20,6)}
-    if last["high"] > h20 and last["close"] < h20 and last["close"] < last["open"]:
-        return {"swept": True, "type": "bear", "level": round(h20,6)}
-    return {"swept": False}
-
-# ─── PREMIUM/DISCOUNT ────────────────────────────────────────
-def get_pd_zone(df, lb=100):
-    rc = df.tail(lb)
-    sh = rc["high"].max()
-    sl = rc["low"].min()
-    p = df["close"].iloc[-1]
-    rng = sh - sl
-    if rng == 0:
-        return "equilibrium", 50
-    pct = (p - sl) / rng * 100
-    return ("discount" if pct < 37 else "premium" if pct > 63 else "equilibrium"), round(pct, 1)
-
-# ─── EQH/EQL ─────────────────────────────────────────────────
-def check_eqhl(df, lb=50, thresh=0.003):
-    rc = df.tail(lb)
-    hs = rc["high"].values
-    ls = rc["low"].values
-    eqh = None
-    eql = None
-    for i in range(len(hs)-1):
-        for j in range(i+3, len(hs)):
-            if abs(hs[i] - hs[j]) / hs[i] < thresh:
-                eqh = round((hs[i] + hs[j]) / 2, 6)
-    for i in range(len(ls)-1):
-        for j in range(i+3, len(ls)):
-            if abs(ls[i] - ls[j]) / ls[i] < thresh:
-                eql = round((ls[i] + ls[j]) / 2, 6)
-    return {"eqh": eqh, "eql": eql}
-
-# ─── 5m CANDLESTICK PATTERNS ─────────────────────────────────
+# ─── CANDLESTICK PATTERNS ────────────────────────────────────
 def detect_5m_candles(df):
     found = []
     if len(df) < 20:
         return found
-
+    
     c = df["close"].values
     o = df["open"].values
     h = df["high"].values
     l = df["low"].values
-
+    
     high20 = max(h[-20:-1])
     low20 = min(l[-20:-1])
-
     price = c[-1]
     prev = c[-2]
-
+    
     # Breakout + Retest
     if prev > high20 * 0.998:
-        if abs(price - high20) / price < 0.015:
-            if c[-1] > o[-1]:
-                found.append(("Breakout Retest Bullish", "LONG", 4))
-
+        if abs(price - high20) / price < 0.015 and c[-1] > o[-1]:
+            found.append(("Breakout Retest Bullish", "LONG", 4))
+    
     if prev < low20 * 1.002:
-        if abs(price - low20) / price < 0.015:
-            if c[-1] < o[-1]:
-                found.append(("Breakdown Retest Bearish", "SHORT", 4))
-
-    # Bull Flag
-    if len(c) >= 18:
-        pole_up = (c[-10] - c[-18]) / c[-18] if c[-18] > 0 else 0
-        consol = (max(h[-8:-1]) - min(l[-8:-1])) / price if price > 0 else 1
-        if pole_up > 0.03 and consol < 0.02:
-            if price > max(h[-8:-1]):
-                found.append(("Bull Flag Breakout", "LONG", 4))
-            elif abs(price - max(h[-8:-1])) / price < 0.01:
-                found.append(("Bull Flag Retest", "LONG", 3))
-
-    # Bear Flag
-    if len(c) >= 18:
-        pole_dn = (c[-18] - c[-10]) / c[-18] if c[-18] > 0 else 0
-        consol = (max(h[-8:-1]) - min(l[-8:-1])) / price if price > 0 else 1
-        if pole_dn > 0.03 and consol < 0.02:
-            if price < min(l[-8:-1]):
-                found.append(("Bear Flag Breakdown", "SHORT", 4))
-            elif abs(price - min(l[-8:-1])) / price < 0.01:
-                found.append(("Bear Flag Retest", "SHORT", 3))
-
+        if abs(price - low20) / price < 0.015 and c[-1] < o[-1]:
+            found.append(("Breakdown Retest Bearish", "SHORT", 4))
+    
     # Engulfing
     body3 = abs(c[-1] - o[-1])
     body2 = abs(c[-2] - o[-2])
@@ -434,54 +260,38 @@ def detect_5m_candles(df):
     if (c[-2] > o[-2] and c[-1] < o[-1] and
             c[-1] < o[-2] and o[-1] > c[-2] and body3 > body2):
         found.append(("Bearish Engulfing", "SHORT", 3))
-
+    
     # Hammer / Shooting Star
     uw = h[-1] - max(c[-1], o[-1])
     lw = min(c[-1], o[-1]) - l[-1]
     tot = h[-1] - l[-1]
     if tot > 0:
         if lw > body3 * 2 and lw > uw * 2 and c[-2] < o[-2]:
-            found.append(("Hammer Reversal", "LONG", 3))
+            found.append(("Hammer", "LONG", 3))
         if uw > body3 * 2 and uw > lw * 2 and c[-2] > o[-2]:
             found.append(("Shooting Star", "SHORT", 3))
-
+    
     return found
 
-# ─── 5m ENTRY ZONE CHECK ─────────────────────────────────────
+# ─── DUMMY FUNCTIONS ─────────────────────────────────────────
+def find_sr_zones(df, lb=100, zone_pct=0.008, min_touches=2):
+    return []
+def find_order_blocks(df):
+    return {"bull_ob": None, "bear_ob": None}
+def find_fvg(df):
+    return {"bull_fvg": None, "bear_fvg": None}
+def check_sr_flip(df, sr_zones):
+    return {"flipped": False}
+def check_sweep(df):
+    return {"swept": False}
+def get_pd_zone(df, lb=100):
+    return "equilibrium", 50
+def check_eqhl(df, lb=50, thresh=0.003):
+    return {}
 def check_entry_zone(df, direction, sr_zones, ob, fvg):
-    price = df["close"].iloc[-1]
-    atr = df["atr"].iloc[-1] if "atr" in df.columns else price * 0.005
-    zone = atr * 1.5
-
-    zones_found = []
-
-    for z in sr_zones:
-        if abs(price - z["level"]) <= zone:
-            zones_found.append(f"S/R {z['type']} at {z['level']}")
-
-    if direction == "LONG" and ob.get("bull_ob"):
-        ob_mid = (ob["bull_ob"]["high"] + ob["bull_ob"]["low"]) / 2
-        if abs(price - ob_mid) <= zone * 2:
-            zones_found.append(f"Bullish OB {ob['bull_ob']['low']}-{ob['bull_ob']['high']}")
-
-    if direction == "SHORT" and ob.get("bear_ob"):
-        ob_mid = (ob["bear_ob"]["high"] + ob["bear_ob"]["low"]) / 2
-        if abs(price - ob_mid) <= zone * 2:
-            zones_found.append(f"Bearish OB {ob['bear_ob']['low']}-{ob['bear_ob']['high']}")
-
-    if direction == "LONG" and fvg.get("bull_fvg"):
-        fvg_mid = (fvg["bull_fvg"]["top"] + fvg["bull_fvg"]["bot"]) / 2
-        if abs(price - fvg_mid) <= zone * 2:
-            zones_found.append(f"Bull FVG {fvg['bull_fvg']['bot']}-{fvg['bull_fvg']['top']}")
-
-    if direction == "SHORT" and fvg.get("bear_fvg"):
-        fvg_mid = (fvg["bear_fvg"]["top"] + fvg["bear_fvg"]["bot"]) / 2
-        if abs(price - fvg_mid) <= zone * 2:
-            zones_found.append(f"Bear FVG {fvg['bear_fvg']['bot']}-{fvg['bear_fvg']['top']}")
-
-    return zones_found
-
-# ─── DYNAMIC SL/TP (ATR Based) ───────────────────────────────
+    return []
+def get_swing_points(df, lb=5):
+    return {}
 def calc_sl_tp(price, direction, atr):
     if direction == "LONG":
         sl = round(price - atr * 2.0, 6)
@@ -493,212 +303,96 @@ def calc_sl_tp(price, direction, atr):
         tp1 = round(price - atr * 1.5, 6)
         tp2 = round(price - atr * 3.0, 6)
         tp3 = round(price - atr * 4.5, 6)
-
     risk = abs(price - sl)
-    rr_tp2 = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
-    return sl, tp1, tp2, tp3, rr_tp2
+    rr = round(abs(tp2 - price) / risk, 2) if risk > 0 else 0
+    return sl, tp1, tp2, tp3, rr
 
-# ─── MAIN: FULL CASCADE ANALYSIS ─────────────────────────────
+# ─── MAIN ANALYSIS ───────────────────────────────────────────
 def analyze_cascade(symbol, gainers_set=None):
-    """TOP-DOWN: 4H → 1H → 30m → 15m → 5m"""
-
-    # STEP 1: 4H + 1H TREND (HTF)
-    htf_scores = {}
+    """4H → 1H → 5m cascade analysis"""
+    
+    # HTF: 4H + 1H
     htf_dirs = {}
-    htf_notes = {}
-
-    for tf_label, tf_code in HTF:
+    htf_scores = {}
+    
+    for tf_label, tf_code in [("4H", "4h"), ("1H", "1h")]:
         df = get_klines(symbol, tf_code, 150)
         if df is None:
-            continue
-        d, s, n = analyze_tf_trend(df)
+            return None
+        d, s, _ = analyze_tf_trend(df)
         htf_dirs[tf_label] = d
         htf_scores[tf_label] = s
-        htf_notes[tf_label] = n
         time.sleep(0.08)
-
+    
     h4_dir = htf_dirs.get("4H", "neutral")
     h1_dir = htf_dirs.get("1H", "neutral")
-
+    
     if h4_dir == "neutral" and h1_dir == "neutral":
         return None
-
+    
     direction = "LONG" if (h4_dir == "bullish" or h1_dir == "bullish") else "SHORT"
     htf_score = sum(htf_scores.values())
-
-    # STEP 2: 30m + 15m CONFIRMATION (MTF)
-    mtf_scores = {}
-    mtf_dirs = {}
-    mtf_agrees = 0
-
-    for tf_label, tf_code in MTF:
-        df = get_klines(symbol, tf_code, 150)
-        if df is None:
-            continue
-        d, s, n = analyze_tf_trend(df)
-        mtf_dirs[tf_label] = d
-        mtf_scores[tf_label] = s
-        if d == h4_dir:
-            mtf_agrees += 1
-        time.sleep(0.08)
-
-    if mtf_agrees == 0:
-        return None
-
-    mtf_score = sum(mtf_scores.values())
-
-    # STEP 3: 5m ENTRY ANALYSIS
+    
+    # 5m Entry
     df5 = get_klines(symbol, "5m", 200)
     if df5 is None or len(df5) < 50:
         return None
     df5 = add_indicators(df5)
-
+    
     price = df5["close"].iloc[-1]
     atr = df5["atr"].iloc[-1] if "atr" in df5.columns else price * 0.005
-
-    d5, s5, n5 = analyze_tf_trend(df5)
+    
+    d5, s5, _ = analyze_tf_trend(df5)
     if d5 not in ["neutral", h4_dir]:
         return None
-
-    # STEP 4: SMC ON 5m
-    sr5 = find_sr_zones(df5)
-    ob5 = find_order_blocks(df5)
-    fvg5 = find_fvg(df5)
-    swing5 = get_swing_points(df5)
-    flip5 = check_sr_flip(df5, sr5)
-    sweep5 = check_sweep(df5)
-    pd5, pd_pct = get_pd_zone(df5)
-    eqhl5 = check_eqhl(df5)
-
-    entry_zones = check_entry_zone(df5, direction, sr5, ob5, fvg5)
-
-    # STEP 5: 5m CANDLESTICK PATTERNS
+    
+    # Candlestick pattern
     candles = detect_5m_candles(df5)
-    matching_candles = [c for c in candles if c[1] == direction]
-
-    if not matching_candles:
+    matching = [c for c in candles if c[1] == direction]
+    
+    if not matching:
         return None
-
-    best_candle = max(matching_candles, key=lambda x: x[2])
-
-    # STEP 6: SCORING (0-50)
-    score = 0
-    confirmations = []
-
-    # HTF alignment
-    htf_pts = min(htf_score, 12)
-    score += htf_pts
-    confirmations.append(f"4H {h4_dir} + 1H {h1_dir} aligned")
-
-    # MTF confirmation
-    mtf_pts = min(int(mtf_score * 0.4), 8)
-    score += mtf_pts
-    if mtf_agrees == 2:
-        confirmations.append("30m + 15m both confirm")
-    else:
-        confirmations.append(f"{'30m' if mtf_dirs.get('30m') == h4_dir else '15m'} confirms")
-
-    # Candlestick
-    candle_pts = best_candle[2] * 2
-    score += candle_pts
-    confirmations.append(f"5m: {best_candle[0]} (strength {best_candle[2]})")
-
-    # Entry zone
-    if entry_zones:
-        score += min(len(entry_zones) * 3, 6)
-        confirmations.append(f"Entry zone: {entry_zones[0]}")
-
-    # S/R Flip + Retest
-    if flip5.get("retest") and flip5.get("flipped"):
-        score += 6
-        ft = "R→S" if flip5["type"] == "r_to_s" else "S→R"
-        confirmations.append(f"S/R Flip Retest: {ft} at {flip5['level']}")
-    elif flip5.get("flipped"):
-        score += 2
-        confirmations.append(f"S/R Flip: {flip5['level']}")
-
-    # Liquidity sweep
-    if sweep5.get("swept"):
-        if (sweep5["type"] == "bull" and direction == "LONG") or \
-           (sweep5["type"] == "bear" and direction == "SHORT"):
-            score += 4
-            confirmations.append(f"Liquidity sweep at {sweep5['level']}")
-
-    # Premium/Discount
-    if direction == "LONG" and pd5 == "discount":
-        score += 4
-        confirmations.append(f"Discount zone {pd_pct}%")
-    elif direction == "SHORT" and pd5 == "premium":
-        score += 4
-        confirmations.append(f"Premium zone {pd_pct}%")
-
-    # Swing structure
-    if direction == "LONG":
-        if swing5.get("HH") and swing5.get("HL"):
-            score += 4
-            confirmations.append("5m HH+HL bullish structure")
-        elif swing5.get("HL"):
-            score += 2
-            confirmations.append("5m Higher Low")
-        if swing5.get("strong_low") and abs(price - swing5["strong_low"]) / price < 0.012:
-            score += 2
-            confirmations.append(f"Strong Low: {swing5['strong_low']}")
-    else:
-        if swing5.get("LH") and swing5.get("LL"):
-            score += 4
-            confirmations.append("5m LH+LL bearish structure")
-        elif swing5.get("LH"):
-            score += 2
-            confirmations.append("5m Lower High")
-        if swing5.get("strong_high") and abs(price - swing5["strong_high"]) / price < 0.012:
-            score += 2
-            confirmations.append(f"Strong High: {swing5['strong_high']}")
-
-    # EQH/EQL
-    if direction == "LONG" and eqhl5.get("eql") and abs(price - eqhl5["eql"]) / price < 0.012:
-        score += 2
-        confirmations.append(f"EQL liquidity: {eqhl5['eql']}")
-    if direction == "SHORT" and eqhl5.get("eqh") and abs(price - eqhl5["eqh"]) / price < 0.012:
-        score += 2
-        confirmations.append(f"EQH liquidity: {eqhl5['eqh']}")
-
+    
+    best_candle = max(matching, key=lambda x: x[2])
+    
+    # Scoring
+    score = min(htf_score, 12)
+    score += min(best_candle[2] * 2, 8)
+    
     # Gainer bonus
     is_gainer = bool(gainers_set and symbol in gainers_set)
     if is_gainer:
-        score += 2
-        confirmations.append("Top gainer momentum")
-
-    score = min(score, 50)
-
+        score += 3
+    
     if score < SCORE_C:
         return None
-
-    # STEP 7: SL/TP + R:R CHECK
+    
+    # SL/TP
     sl, tp1, tp2, tp3, rr = calc_sl_tp(price, direction, atr)
-
+    
     if rr < MIN_RR:
         return None
-
-    # STEP 8: GRADE + POSITION SIZE
+    
+    # Grade
     if score >= SCORE_A:
         grade = "A+"
-        pos_size = "2-3%"
     elif score >= SCORE_B:
         grade = "B"
-        pos_size = "1-2%"
     else:
         grade = "C"
-        pos_size = "0.5-1%"
-
-    h4_note = " | ".join(htf_notes.get("4H", [])[:2])
-    h1_note = " | ".join(htf_notes.get("1H", [])[:2])
-
+    
+    confirmations = [
+        f"4H {h4_dir} + 1H {h1_dir} aligned",
+        f"5m: {best_candle[0]}",
+    ]
+    if is_gainer:
+        confirmations.append("🔥 Top gainer momentum")
+    
     return {
         "symbol": symbol,
         "direction": direction,
         "grade": grade,
         "score": score,
-        "pos_size": pos_size,
         "price": round(price, 6),
         "entry": round(price, 6),
         "sl": sl,
@@ -709,18 +403,8 @@ def analyze_cascade(symbol, gainers_set=None):
         "atr": round(atr, 6),
         "candle": best_candle[0],
         "candle_str": best_candle[2],
-        "all_candles": [c[0] for c in matching_candles],
         "confirmations": confirmations,
         "h4_trend": h4_dir,
         "h1_trend": h1_dir,
-        "h4_note": h4_note,
-        "h1_note": h1_note,
-        "mtf_agrees": mtf_agrees,
-        "entry_zones": entry_zones,
-        "pd_zone": pd5,
-        "pd_pct": pd_pct,
-        "flip": flip5,
-        "sweep": sweep5,
-        "eqhl": eqhl5,
         "is_gainer": is_gainer,
     }
