@@ -1,20 +1,9 @@
 """
 =======================================================
-  CRYPTO FUTURES SCANNER v5.0 — 100% FREE
+  CRYPTO FUTURES SCANNER v5.1 — FIXED + IMPROVED
   TOP-DOWN CASCADE: 4H → 1H → 30m → 15m → 5m
-  ENTRY: Sirf 5m candlestick pattern confirm hone par
-  SINGLE SIGNAL PER COIN — No duplicate TF spam
+  SCAN INTERVAL: 30 MINUTES (FUTURES OPTIMIZED)
 =======================================================
-CHALANE KA TARIKA:
-  py -3 crypto_scanner_v5.py
-
-ZAROORI: dono files ek hi folder mein:
-  v5_engine.py
-  crypto_scanner_v5.py
-
-FILES JO BANEGI:
-  v5_signals_log.csv   — har signal ka record
-  v5_sent.json         — duplicate filter
 """
 
 import time, json, csv, os
@@ -27,7 +16,7 @@ from v5_engine import (
 
 # ─── SETTINGS ─────────────────────────────────────────────
 TOP_COINS   = 50
-BLOCK_HOURS = 4
+BLOCK_HOURS = 2  # Changed from 4 to 2 for faster trading
 LOG_FILE    = "v5_signals_log.csv"
 SENT_FILE   = "v5_sent.json"
 
@@ -35,32 +24,36 @@ SENT_FILE   = "v5_sent.json"
 def load_sent():
     if os.path.exists(SENT_FILE):
         try:
-            with open(SENT_FILE,"r") as f: return json.load(f)
-        except: pass
+            with open(SENT_FILE,"r") as f: 
+                return json.load(f)
+        except: 
+            pass
     return {}
 
 def save_sent(d):
-    with open(SENT_FILE,"w") as f: json.dump(d,f,indent=2)
+    with open(SENT_FILE,"w") as f: 
+        json.dump(d, f, indent=2)
 
 def is_dup(sent, sym, direction):
     key = f"{sym}_{direction}"
     if key in sent:
-        hrs = (time.time()-sent[key])/3600
-        if hrs < BLOCK_HOURS: return True, round(BLOCK_HOURS-hrs,1)
+        hrs = (time.time() - sent[key]) / 3600
+        if hrs < BLOCK_HOURS: 
+            return True, round(BLOCK_HOURS - hrs, 1)
     return False, 0
 
 def mark_sent(sent, sym, direction):
     sent[f"{sym}_{direction}"] = time.time()
-    cutoff = time.time()-86400
-    return {k:v for k,v in sent.items() if v>cutoff}
+    cutoff = time.time() - 86400  # 24 hours old delete
+    return {k: v for k, v in sent.items() if v > cutoff}
 
 # ─── LOGGING ──────────────────────────────────────────────
 def log_signal(r, fr, oi):
     exists = os.path.exists(LOG_FILE)
-    fields = ["datetime","symbol","direction","grade","score","entry",
-              "sl","tp1","tp2","tp3","rr","candle","candle_str",
-              "pd_zone","h4_trend","h1_trend","mtf_agrees",
-              "funding","oi","entry_zones","confirmations"]
+    fields = ["datetime", "symbol", "direction", "grade", "score", "entry",
+              "sl", "tp1", "tp2", "tp3", "rr", "candle", "candle_str",
+              "pd_zone", "h4_trend", "h1_trend", "mtf_agrees",
+              "funding", "oi", "entry_zones", "confirmations"]
     row = {
         "datetime":     datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "symbol":       r["symbol"],
@@ -79,215 +72,262 @@ def log_signal(r, fr, oi):
         "h4_trend":     r["h4_trend"],
         "h1_trend":     r["h1_trend"],
         "mtf_agrees":   r["mtf_agrees"],
-        "funding":      fr.get("rate",0),
-        "oi":           oi.get("signal","?"),
-        "entry_zones":  "|".join(r.get("entry_zones",[])),
-        "confirmations":"|".join(r["confirmations"]),
+        "funding":      fr.get("rate", 0),
+        "oi":           oi.get("signal", "?"),
+        "entry_zones":  "|".join(r.get("entry_zones", [])),
+        "confirmations": "|".join(r["confirmations"]),
     }
-    with open(LOG_FILE,"a",newline="") as f:
-        w = csv.DictWriter(f,fieldnames=fields)
-        if not exists: w.writeheader()
+    with open(LOG_FILE, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fields)
+        if not exists: 
+            w.writeheader()
         w.writerow(row)
 
-# ─── SIGNAL MESSAGE ───────────────────────────────────────
-def make_signal(r, fr, oi):
-    import os, requests as req
-    groq_key = os.environ.get('GROQ_API_KEY','')
-    d     = r["direction"]
-    emoji = "🟢" if d=="LONG" else "🔴"
-    grade_names = {"A+":"A+ SETUP","B":"B SETUP","C":"C SETUP"}
-
-    # Confirmations
-    conf_txt = "\n".join([f"✅ {c}" for c in r["confirmations"][:4]])
-
-    # Groq AI analysis
-    ai_txt = ""
-    if groq_key:
-        try:
-            prompt = f"""You are a professional crypto analyst writing a Telegram signal.
-Write 2-3 sentences of market analysis for:
-Symbol: {r['symbol']}
-Direction: {d}
-Pattern: {r['candle']}
-Key levels confirmed: {', '.join(r['confirmations'][:3])}
-Zone: {r['pd_zone']}
-Rules: English only, professional, max 3 sentences, mention entry reason and key risk."""
-
-            resp = req.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {groq_key}",
-                         "Content-Type": "application/json"},
-                json={"model": "llama3-8b-8192",
-                      "max_tokens": 150,
-                      "messages": [{"role":"user","content":prompt}]},
-                timeout=10
-            )
-            ai_txt = resp.json()["choices"][0]["message"]["content"].strip()
-        except:
-            ai_txt = ""
-
+# ─── SIGNAL MESSAGE (NO GROQ - FASTER) ────────────────────
+def make_signal_fast(r, fr, oi):
+    """Template-based signal - faster than Groq API"""
+    d = r["direction"]
+    emoji = "🟢" if d == "LONG" else "🔴"
+    
+    grade_names = {"A+": "🔥 A+ PREMIUM", "B": "✅ B GOOD", "C": "⚠️ C CAUTION"}
+    
+    # Build confirmations string
+    conf_lines = []
+    for c in r["confirmations"][:5]:
+        conf_lines.append(f"  • {c}")
+    conf_text = "\n".join(conf_lines) if conf_lines else "  • Basic setup confirmed"
+    
+    # Entry zone info
+    entry_zones_text = ""
+    if r.get("entry_zones"):
+        entry_zones_text = f"\n📍 Entry Trigger:\n  • {r['entry_zones'][0]}"
+    
     # OI + Funding
-    oi_line = f"📊 OI: {oi['signal'].title()}" if oi.get('signal','unknown') != 'unknown' else ""
-    fr_line = f"💸 Funding: {fr.get('rate',0)}%"
-
-    msg = f"""{emoji} #{r['symbol']} – {d} Setup Active
+    oi_symbol = "📈" if oi.get("signal") == "rising" else "📉" if oi.get("signal") == "falling" else "➖"
+    oi_line = f"{oi_symbol} OI: {oi.get('signal', 'neutral').upper()}" if oi.get('signal', 'unknown') != 'unknown' else ""
+    fr_line = f"💸 Funding: {fr.get('rate', 0)}%"
+    fr_emoji = "🐂" if fr.get('rate', 0) < -0.03 else "🐻" if fr.get('rate', 0) > 0.03 else "⚖️"
+    
+    # Risk level based on score
+    risk_level = "LOW" if r["score"] >= SCORE_A else "MEDIUM" if r["score"] >= SCORE_B else "HIGH"
+    
+    msg = f"""{emoji} <b>#{r['symbol']} – {d} SIGNAL ACTIVE</b>
 ━━━━━━━━━━━━━━━━━━━━━━━
-📊 Technical Analysis:
-{ai_txt if ai_txt else conf_txt}
 
-💎 Signal Type: {grade_names[r['grade']]} {d}
-📐 Pattern: {r['candle']}
-🌐 Timeframe: 4H→1H→5m Cascade
-{oi_line}
-{fr_line}
+📊 <b>Setup Summary:</b>
+  • Pattern: {r['candle']}
+  • Grade: {grade_names.get(r['grade'], r['grade'])} ({r['score']}/50)
+  • Risk: {risk_level}
+  • Trend Cascade: 4H({r['h4_trend']}) → 1H({r['h1_trend']}) → 5m Confirmed
 
-📥 Entry Zone:
-✅ {r['entry']}
+🔧 <b>Confirmations:</b>
+{conf_text}
+{entry_zones_text}
 
-🎯 Take-Profit:
-- TP1: {r['tp1']}  (+2%)
-- TP2: {r['tp2']}  (+5%)
-- TP3: {r['tp3']}  (+7%)
+💎 <b>Entry Zone:</b>
+  ✅ {r['entry']}
 
-❌ Stop-Loss:
-- {r['sl']}
+🎯 <b>Take-Profit Targets:</b>
+  • TP1: {r['tp1']}  (~1.5% 🎯)
+  • TP2: {r['tp2']}  (~3% 🚀)
+  • TP3: {r['tp3']}  (~4.5% 🌙)
 
-⚠️ Risk Management:
-Risk max 1-2% per trade. Always use SL.
+🛡️ <b>Stop-Loss:</b>
+  ❌ {r['sl']}  (Risk: {r['rr']:.1f}R)
 
-⫷ @BaytoHunterBot ⫸"""
+📈 <b>Context:</b>
+  {oi_line}
+  {fr_emoji} {fr_line}
+
+━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ Risk: 1-2% per trade | Use SL strictly
+🤖 BaytoHunter Scanner v5.1 | 30min scan"""
+    
     return msg
 
-# ─── MAIN SCANNER ─────────────────────────────────────────
-import os
-
+# ─── TELEGRAM SENDER ──────────────────────────────────────
 def send_telegram_signal(message):
-    token   = os.environ.get('TELEGRAM_TOKEN', '8669042447:AAEXQrILOCgj5S89baTL1eMo42rr7luu5M8')
-    chat_id = os.environ.get('CHAT_ID', '1255000050')
+    # IMPORTANT: GitHub secrets mein daalo - HARDCODED MAT KARO!
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('CHAT_ID')
+    
+    if not token or not chat_id:
+        print("  ⚠️ TELEGRAM_TOKEN or CHAT_ID not set in environment!")
+        print("  Signal printed above but not sent to Telegram.")
+        return False
+    
     try:
         import requests
-        requests.post(
+        resp = requests.post(
             f'https://api.telegram.org/bot{token}/sendMessage',
             json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
             timeout=10
         )
-    except:
-        pass
+        if resp.status_code == 200:
+            return True
+        else:
+            print(f"  Telegram error: {resp.text}")
+            return False
+    except Exception as e:
+        print(f"  Telegram send failed: {e}")
+        return False
+
+# ─── MAIN SCANNER ─────────────────────────────────────────
 def run_scanner():
-    now  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sent = load_sent()
 
     print(f"\n{'#'*56}")
-    print(f"  FUTURES SCANNER v5.0 — {now}")
+    print(f"  FUTURES SCANNER v5.1 — {now}")
     print(f"  CASCADE: 4H→1H→30m→15m→5m | Entry: 5m only")
-    print(f"  Single signal per coin | Dup block: {BLOCK_HOURS}h")
+    print(f"  Duplicate block: {BLOCK_HOURS}h | Fast mode (no AI)")
     print(f"{'#'*56}")
 
-    print("\n  Futures coins fetch ho rahe hain...")
-    all_syms  = get_futures_symbols()
-    print(f"  Total: {len(all_syms)} pairs")
+    print("\n  📡 Fetching futures coins...")
+    all_syms = get_futures_symbols()
+    print(f"  ✓ Total pairs: {len(all_syms)}")
+    
     scan_list = get_top_volume(all_syms, TOP_COINS)
-    gainers   = get_top_gainers(all_syms)
-    print(f"  Scanning: {len(scan_list)} coins | Gainers: {len(gainers)}")
-    print(f"\n  [Note: Har coin ke liye 5 TF fetch hoga — thoda waqt lagega]\n")
+    gainers = get_top_gainers(all_syms)
+    print(f"  ✓ Scanning: {len(scan_list)} coins | Top gainers: {len(gainers)}")
+    print(f"\n  🔄 Scanning (5 TF per coin)...\n")
 
-    results = []; skipped = 0; done = 0
-    total   = len(scan_list)
+    results = []
+    skipped_dup = 0
+    skipped_api = 0
+    done = 0
+    total = len(scan_list)
 
     for sym in scan_list:
         done += 1
-        pct  = int(done/total*100)
-        bar  = "█"*(pct//5)+"░"*(20-pct//5)
-        print(f"  [{bar}] {pct}% ({done}/{total}) — {sym}          ",end="\r")
+        pct = int(done/total*100)
+        bar = "█"*(pct//5) + "░"*(20-pct//5)
+        print(f"  [{bar}] {pct}% ({done}/{total}) — {sym:<12}   ", end="\r")
 
-        # Duplicate check (direction pata nahi abhi — check LONG aur SHORT dono)
-        dup_l,_ = is_dup(sent, sym, "LONG")
-        dup_s,_ = is_dup(sent, sym, "SHORT")
+        # Check duplicates for both directions
+        dup_l, _ = is_dup(sent, sym, "LONG")
+        dup_s, _ = is_dup(sent, sym, "SHORT")
         if dup_l and dup_s:
-            skipped += 1
+            skipped_dup += 1
             continue
 
-        r = analyze_cascade(sym, gainers)
+        try:
+            r = analyze_cascade(sym, gainers)
+        except Exception as e:
+            skipped_api += 1
+            continue
 
         if r is None:
             continue
 
-        # Direction-specific dup check
-        dup, hrs = is_dup(sent, sym, r["direction"])
+        # Direction-specific duplicate check
+        dup, hrs_left = is_dup(sent, sym, r["direction"])
         if dup:
-            skipped += 1
+            skipped_dup += 1
             continue
 
         results.append(r)
 
-    results.sort(key=lambda x: x["score"], reverse=True)
-
     print(f"\n\n  {'='*56}")
-    print(f"  SCAN COMPLETE")
-    print(f"  New signals  : {len(results)}")
-    print(f"  Skipped (dup): {skipped}")
+    print(f"  ✓ SCAN COMPLETE")
+    print(f"  📊 New signals  : {len(results)}")
+    print(f"  ⏭️  Skipped (dup) : {skipped_dup}")
+    print(f"  ❌ API errors    : {skipped_api}")
     print(f"  {'='*56}\n")
 
     if not results:
-        print("  Koi valid cascade signal nahi mila!")
-        print("  Reasons:")
-        print("  - 4H + 1H trend match nahi kar raha")
-        print("  - 5m pe koi candlestick pattern nahi")
-        print("  - R:R 1:2 se kam hai")
-        print("  Thodi der baad scan karo\n")
+        print("  ❌ No valid signals found!")
+        print("     Possible reasons:")
+        print("     • 4H + 1H trends don't match")
+        print("     • No candlestick pattern on 5m")
+        print("     • Risk/Reward below 1:2")
+        print("     • Try again in 30 minutes\n")
         return []
 
     # Summary table
-    print(f"  {'COIN':<12} {'DIR':<6} {'GR':<3} {'SC':>5}  {'ZONE':<14} {'CANDLE'}")
-    print(f"  {'-'*70}")
-    for r in results:
-        g  = "🔥" if r.get("is_gainer") else "  "
-        fl = "★" if r["flip"].get("retest") else " "
-        sw = "⚡" if r["sweep"].get("swept") else " "
+    print(f"  {'COIN':<12} {'DIR':<6} {'GR':<3} {'SC':>5}  {'ZONE':<14} {'CANDLE':<25}")
+    print(f"  {'-'*75}")
+    for r in results[:10]:
+        g = "🔥" if r.get("is_gainer") else "  "
+        fl = "↺" if r.get("flip", {}).get("retest") else " "
+        sw = "⚡" if r.get("sweep", {}).get("swept") else " "
         print(f"  {r['symbol']:<12} {r['direction']:<6} {r['grade']:<3} "
-              f"{r['score']:>3}/50  {r['pd_zone']:<14} {fl}{sw}{g} {r['candle']}")
+              f"{r['score']:>3}/50  {r['pd_zone']:<14} {fl}{sw}{g} {r['candle']:<25}")
 
-    # Signal messages + logging
+    # Send signals to Telegram
     print(f"\n{'='*56}")
-    print("  TELEGRAM SIGNALS:")
+    print("  📤 SENDING SIGNALS TO TELEGRAM:")
     print(f"{'='*56}")
 
-    for r in results[:5]:
-            fr = get_funding_rate(r["symbol"])
-            oi = get_open_interest(r["symbol"])
-            print(make_signal(r, fr, oi))
-            send_telegram_signal(make_signal(r, fr, oi))
-            log_signal(r, fr, oi)
-            sent = mark_sent(sent, r["symbol"], r["direction"])
-            time.sleep(0.1)
+    sent_count = 0
+    for r in results[:5]:  # Max 5 signals per scan
+        fr = get_funding_rate(r["symbol"])
+        oi = get_open_interest(r["symbol"])
+        
+        msg = make_signal_fast(r, fr, oi)  # Fast template, no Groq
+        
+        # Print to console
+        print(f"\n📡 {r['symbol']} - {r['direction']} (Score: {r['score']}/50)")
+        
+        # Send to Telegram
+        if send_telegram_signal(msg):
+            sent_count += 1
+            print(f"  ✓ Sent to Telegram")
+        else:
+            print(f"  ⚠️ Failed to send (check TELEGRAM_TOKEN)")
+            
+        log_signal(r, fr, oi)
+        sent = mark_sent(sent, r["symbol"], r["direction"])
+        time.sleep(1)  # Rate limit for Telegram
 
     save_sent(sent)
-    print(f"\n  Log: {LOG_FILE}")
-    print(f"  Sent tracker: {SENT_FILE}\n")
+    print(f"\n  📁 Log saved: {LOG_FILE}")
+    print(f"  📁 Sent tracker: {SENT_FILE}")
+    print(f"  ✓ {sent_count} signals sent to Telegram\n")
     return results
 
 def run_continuous(mins):
-    print(f"\n  AUTO MODE: Har {mins} min — Ctrl+C se band karo\n")
+    print(f"\n  🔄 AUTO MODE ACTIVE: Scan every {mins} minutes")
+    print(f"  Press Ctrl+C to stop\n")
+    scan_count = 0
     while True:
         try:
+            scan_count += 1
+            print(f"\n{'='*56}")
+            print(f"  SCAN #{scan_count} - {datetime.now().strftime('%H:%M:%S')}")
+            print(f"{'='*56}")
             run_scanner()
-            print(f"  Next scan {mins} min mein...")
-            time.sleep(mins*60)
+            print(f"  😴 Next scan in {mins} minutes...")
+            time.sleep(mins * 60)
         except KeyboardInterrupt:
-            print("\n  Band. Allah Hafiz!"); break
+            print("\n\n  👋 Scanner stopped. Goodbye!\n")
+            break
+        except Exception as e:
+            print(f"\n  ❌ Error: {e}")
+            print(f"  Restarting scan in 60 seconds...")
+            time.sleep(60)
 
 if __name__ == "__main__":
-    print("\n"+"="*56)
-    print("  CRYPTO FUTURES SCANNER v5.0")
-    print("  TOP-DOWN: 4H→1H→30m→15m→5m CASCADE")
-    print("  10 Candlestick Patterns | ATR SL/TP | 0-50 Score")
+    print("\n" + "="*56)
+    print("  🤖 CRYPTO FUTURES SCANNER v5.1")
+    print("  📊 TOP-DOWN: 4H→1H→30m→15m→5m CASCADE")
+    print("  🕯️ 10+ Candlestick Patterns | ATR SL/TP")
+    print("  ⚡ Optimized for futures | 30min scan")
     print("="*56)
-    print("\n  1 = Ek baar scan karo")
-    print("  2 = Har 15 min auto scan")
-    print("  3 = Har 30 min auto scan")
-    print("  4 = Custom interval")
-    c = input("\n  Choice (1/2/3/4): ").strip()
-    if   c=="2": run_continuous(15)
-    elif c=="3": run_continuous(30)
-    elif c=="4": run_continuous(int(input("  Kitne minute: ")))
-    else:        run_scanner()
+    print("\n  📌 Select scan mode:")
+    print("     1 = Single scan (one time)")
+    print("     2 = Every 15 minutes (fast)")
+    print("     3 = Every 30 minutes (recommended)")
+    print("     4 = Custom interval")
+    
+    choice = input("\n  👉 Enter choice (1/2/3/4): ").strip()
+    
+    if choice == "2":
+        run_continuous(15)
+    elif choice == "3":
+        run_continuous(30)
+    elif choice == "4":
+        mins = int(input("  👉 Enter minutes: "))
+        run_continuous(mins)
+    else:
+        run_scanner()
