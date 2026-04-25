@@ -583,7 +583,7 @@ def analyze_cascade(symbol, gainers_set=None):
             return None
 
 direction = "LONG" if (h4_dir=="bullish" or h1_dir=="bullish") else "SHORT"
-    htf_score = sum(htf_scores.values())
+        htf_score = sum(htf_scores.values())
 
     # ── STEP 2: 30m + 15m CONFIRMATION (MTF) ─────────────────
     mtf_scores = {}
