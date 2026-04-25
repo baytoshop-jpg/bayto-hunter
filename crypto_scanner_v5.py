@@ -92,32 +92,26 @@ def log_signal(r, fr, oi):
 # ─── SIGNAL MESSAGE ───────────────────────────────────────
 def make_signal(r, fr, oi):
     import os, requests as req
-
     groq_key = os.environ.get('GROQ_API_KEY','')
-    d        = r["direction"]
-    emoji    = "📈" if d=="LONG" else "📉"
-    g_tag    = " 🔥" if r.get("is_gainer") else ""
-    conf_txt = "\n".join([f"✅ {c}" for c in r["confirmations"][:5]])
+    d     = r["direction"]
+    emoji = "🟢" if d=="LONG" else "🔴"
+    grade_names = {"A+":"A+ SETUP","B":"B SETUP","C":"C SETUP"}
+
+    # Confirmations
+    conf_txt = "\n".join([f"✅ {c}" for c in r["confirmations"][:4]])
 
     # Groq AI analysis
-    ai_analysis = ""
+    ai_txt = ""
     if groq_key:
         try:
-            prompt = f"""You are a crypto trading analyst. Write a brief 2-3 sentence market analysis for this signal.
+            prompt = f"""You are a professional crypto analyst writing a Telegram signal.
+Write 2-3 sentences of market analysis for:
 Symbol: {r['symbol']}
 Direction: {d}
-Timeframe: 5m entry, confirmed on 4H+1H
-Score: {r['score']}/50
-Key confirmations: {', '.join(r['confirmations'][:3])}
-Candle pattern: {r['candle']}
+Pattern: {r['candle']}
+Key levels confirmed: {', '.join(r['confirmations'][:3])}
 Zone: {r['pd_zone']}
-
-Rules:
-- English only
-- Maximum 3 sentences
-- Mention why this is a good entry
-- Mention key risk
-- Be concise and professional"""
+Rules: English only, professional, max 3 sentences, mention entry reason and key risk."""
 
             resp = req.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -125,41 +119,43 @@ Rules:
                          "Content-Type": "application/json"},
                 json={"model": "llama3-8b-8192",
                       "max_tokens": 150,
-                      "messages": [{"role": "user", "content": prompt}]},
+                      "messages": [{"role":"user","content":prompt}]},
                 timeout=10
             )
-            ai_analysis = resp.json()["choices"][0]["message"]["content"].strip()
+            ai_txt = resp.json()["choices"][0]["message"]["content"].strip()
         except:
-            ai_analysis = ""
+            ai_txt = ""
 
-    grade_tag = {"A+":"🏆 A+ SETUP","B":"⚡ B SETUP","C":"📌 C SETUP"}[r["grade"]]
-    pd_names  = {"discount":"🟢 Discount","premium":"🔴 Premium","equilibrium":"⚪ Equilibrium"}
+    # OI + Funding
+    oi_line = f"📊 OI: {oi['signal'].title()}" if oi.get('signal','unknown') != 'unknown' else ""
+    fr_line = f"💸 Funding: {fr.get('rate',0)}%"
 
-    msg = f"""{'='*48}
-{emoji} <b>{r['symbol']}</b> | 5m | <b>{d}</b>{g_tag}
-{grade_tag} | Score: {r['score']}/50
-{'='*48}
-🕯 Candle  : {r['candle']}
-🌍 Zone    : {pd_names[r['pd_zone']]}
-📊 4H      : {r['h4_trend'].upper()}
-📊 1H      : {r['h1_trend'].upper()}
-📊 MTF     : {'30m+15m ✅' if r['mtf_agrees']==2 else '1 TF ✅'}
+    msg = f"""{emoji} #{r['symbol']} – {d} Setup Active
+━━━━━━━━━━━━━━━━━━━━━━━
+📊 Technical Analysis:
+{ai_txt if ai_txt else conf_txt}
 
-💰 Entry   : {r['entry']}
-🛑 SL      : {r['sl']}
-🎯 TP1     : {r['tp1']} (+2%)
-🎯 TP2     : {r['tp2']} (+5%)
-🎯 TP3     : {r['tp3']} (+7%)
-📐 R:R     : 1:{r['rr']}
-💼 Size    : {r['pos_size']}
+💎 Signal Type: {grade_names[r['grade']]} {d}
+📐 Pattern: {r['candle']}
+🌐 Timeframe: 4H→1H→5m Cascade
+{oi_line}
+{fr_line}
 
-🔍 Confirmations:
-{conf_txt}"""
+📥 Entry Zone:
+✅ {r['entry']}
 
-    if ai_analysis:
-        msg += f"\n\n🤖 AI Analysis:\n{ai_analysis}"
+🎯 Take-Profit:
+- TP1: {r['tp1']}  (+2%)
+- TP2: {r['tp2']}  (+5%)
+- TP3: {r['tp3']}  (+7%)
 
-    msg += f"\n\n⚠️ TradingView pe confirm karo!\n{'='*48}"
+❌ Stop-Loss:
+- {r['sl']}
+
+⚠️ Risk Management:
+Risk max 1-2% per trade. Always use SL.
+
+⫷ @BaytoHunterBot ⫸"""
     return msg
 
 # ─── MAIN SCANNER ─────────────────────────────────────────
