@@ -1,0 +1,28 @@
+name: Ultimate Crypto Scanner
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # Har 30 minute run
+  workflow_dispatch:          # Manual run bhi kar sakte ho
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas numpy
+
+      - name: Run scanner
+        run: python scanner_main.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
