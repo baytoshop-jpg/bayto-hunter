@@ -1,14 +1,12 @@
-# scanner_core.py
+# scanner_core.py – SIMPLIFIED (No volume filter, No 4H/1H trend)
 import requests, pandas as pd, numpy as np, time, json, os
 from datetime import datetime
 
 FAPI = "https://fapi.binance.com"
 TELEGRAM_TOKEN = "8669042447:AAEXQrILOCgj5S89baTL1eMo42rr7luu5M8"
 CHAT_ID = "1255000050"
-LEARNING_FILE = "strategy_learning.json"
 SENT_FILE = "sent_signals.json"
 
-# -------------------------------------------------
 def safe_float(x):
     try:
         if isinstance(x, dict):
@@ -32,7 +30,8 @@ def get_klines(symbol, interval, limit=150):
     except:
         return None
 
-def get_top_gainers(limit=30):
+def get_top_gainers(limit=40):
+    """Sirf % change ke hisaab se top gainers – no volume filter"""
     try:
         url = f"{FAPI}/fapi/v1/ticker/24hr"
         r = requests.get(url, timeout=20)
@@ -41,7 +40,6 @@ def get_top_gainers(limit=30):
             return []
         data = r.json()
         if not isinstance(data, list):
-            print("  Unexpected response")
             return []
         gainers = []
         for t in data:
@@ -49,25 +47,17 @@ def get_top_gainers(limit=30):
             if sym and sym.endswith('USDT'):
                 try:
                     pct = safe_float(t.get('priceChangePercent', 0))
-                    vol = safe_float(t.get('quoteVolume', 0))
-                    if vol > 100000:   # volume threshold low enough
-                        gainers.append({'symbol': sym, 'change': pct})
+                    gainers.append({'symbol': sym, 'change': pct})
                 except:
                     continue
         gainers.sort(key=lambda x: abs(x['change']), reverse=True)
-        if not gainers:
-            # fallback – just top volume coins
-            sorted_by_vol = sorted([t for t in data if t.get('symbol', '').endswith('USDT')],
-                                   key=lambda x: safe_float(x.get('quoteVolume', 0)), reverse=True)
-            for t in sorted_by_vol[:limit]:
-                sym = t.get('symbol')
-                if sym:
-                    gainers.append({'symbol': sym, 'change': safe_float(t.get('priceChangePercent', 0))})
+        print(f"  ✅ Found {len(gainers)} total USDT pairs. Top gainer: {gainers[0]['symbol']} +{gainers[0]['change']:.2f}%")
         return gainers[:limit]
     except Exception as e:
-        print(f"  Error in get_top_gainers: {e}")
+        print(f"  Error: {e}")
         return []
 
+# ------------------- INDICATORS -------------------
 def calculate_ema(df, period):
     return df['close'].ewm(span=period, adjust=False).mean()
 
@@ -141,7 +131,7 @@ def check_candle(df):
         return "Bearish Engulfing"
     return None
 
-# ------------------- strategy checks -------------------
+# ------------------- STRATEGY CHECKS (No HTF trend, just pure price action) -------------------
 def check_sr(df, price, direction):
     price = float(price)
     for lv in find_sr_levels(df):
@@ -225,51 +215,67 @@ def check_rsi(df, direction):
         return True, f"RSI {rsi:.1f} (Overbought)"
     return False, None
 
-# ------------------- main analysis -------------------
+# ------------------- MAIN ANALYSIS (No HTF trend) -------------------
 def analyze_symbol(symbol):
     try:
-        df4 = get_klines(symbol, "4h", 150)
-        df1 = get_klines(symbol, "1h", 150)
-        df15 = get_klines(symbol, "15m", 100)
-        if df4 is None or df1 is None or df15 is None:
+        # Sirf 15m timeframe check karo (entry ke liye)
+        df_entry = get_klines(symbol, "15m", 100)
+        if df_entry is None or len(df_entry) < 50:
             return None
 
-        ema20_4 = calculate_ema(df4,20).iloc[-1]
-        ema50_4 = calculate_ema(df4,50).iloc[-1]
-        price4 = df4['close'].iloc[-1]
-        ema20_1 = calculate_ema(df1,20).iloc[-1]
-        ema50_1 = calculate_ema(df1,50).iloc[-1]
-        price1 = df1['close'].iloc[-1]
+        price = float(df_entry['close'].iloc[-1])
 
-        trend4 = "bullish" if price4 > ema20_4 > ema50_4 else "bearish" if price4 < ema20_4 < ema50_4 else "neutral"
-        trend1 = "bullish" if price1 > ema20_1 > ema50_1 else "bearish" if price1 < ema20_1 < ema50_1 else "neutral"
+        # Strategy checks – without any trend direction, we need to determine direction from price action?
+        # Actually strategies need a direction (LONG/SHORT). We'll check both directions and pick the one with more confirmations.
+        # But simpler: let's determine direction from EMA alignment? User said ignore 4H/1H, so we can use 15m EMA as bias.
+        # For now, we will check both directions and take the one with >=3 strategies.
 
-        if trend4 == "neutral" or trend1 == "neutral" or trend4 != trend1:
+        # Try LONG
+        long_strategies = []
+        sr_ok, _ = check_sr(df_entry, price, "LONG")
+        if sr_ok: long_strategies.append("S/R Level")
+        ob_ok, _ = check_ob(df_entry, price, "LONG")
+        if ob_ok: long_strategies.append("Order Block")
+        fvg_ok, _ = check_fvg(df_entry, price, "LONG")
+        if fvg_ok: long_strategies.append("FVG")
+        ema_ok, _ = check_ema(df_entry, "LONG")
+        if ema_ok: long_strategies.append("EMA")
+        bo_ok, _ = check_breakout(df_entry, price, "LONG")
+        if bo_ok: long_strategies.append("Breakout")
+        pat_ok, _ = check_pattern(df_entry, "LONG")
+        if pat_ok: long_strategies.append("Pattern")
+        rsi_ok, _ = check_rsi(df_entry, "LONG")
+        if rsi_ok: long_strategies.append("RSI")
+
+        # Try SHORT
+        short_strategies = []
+        sr_ok, _ = check_sr(df_entry, price, "SHORT")
+        if sr_ok: short_strategies.append("S/R Level")
+        ob_ok, _ = check_ob(df_entry, price, "SHORT")
+        if ob_ok: short_strategies.append("Order Block")
+        fvg_ok, _ = check_fvg(df_entry, price, "SHORT")
+        if fvg_ok: short_strategies.append("FVG")
+        ema_ok, _ = check_ema(df_entry, "SHORT")
+        if ema_ok: short_strategies.append("EMA")
+        bo_ok, _ = check_breakout(df_entry, price, "SHORT")
+        if bo_ok: short_strategies.append("Breakout")
+        pat_ok, _ = check_pattern(df_entry, "SHORT")
+        if pat_ok: short_strategies.append("Pattern")
+        rsi_ok, _ = check_rsi(df_entry, "SHORT")
+        if rsi_ok: short_strategies.append("RSI")
+
+        # Pick direction with more strategies
+        if len(long_strategies) >= 3:
+            direction = "LONG"
+            strategies = long_strategies
+        elif len(short_strategies) >= 3:
+            direction = "SHORT"
+            strategies = short_strategies
+        else:
             return None
 
-        direction = "LONG" if trend4 == "bullish" else "SHORT"
-        price = float(df15['close'].iloc[-1])
-
-        strategies = []
-        sr_ok, _ = check_sr(df15, price, direction)
-        if sr_ok: strategies.append("S/R Level")
-        ob_ok, _ = check_ob(df15, price, direction)
-        if ob_ok: strategies.append("Order Block")
-        fvg_ok, _ = check_fvg(df15, price, direction)
-        if fvg_ok: strategies.append("FVG")
-        ema_ok, _ = check_ema(df15, direction)
-        if ema_ok: strategies.append("EMA")
-        bo_ok, _ = check_breakout(df15, price, direction)
-        if bo_ok: strategies.append("Breakout")
-        pat_ok, _ = check_pattern(df15, direction)
-        if pat_ok: strategies.append("Pattern")
-        rsi_ok, _ = check_rsi(df15, direction)
-        if rsi_ok: strategies.append("RSI")
-
-        if len(strategies) < 3:
-            return None
-
-        atr_val = calculate_atr(df15).iloc[-1]
+        # ATR for SL/TP
+        atr_val = calculate_atr(df_entry).iloc[-1]
         if pd.isna(atr_val) or atr_val == 0:
             atr_val = price * 0.01
         atr_val = float(atr_val)
@@ -295,10 +301,11 @@ def analyze_symbol(symbol):
             "tp": tp,
             "rr": rr
         }
-    except Exception:
+    except Exception as e:
+        # print(f"Error {symbol}: {e}")
         return None
 
-# ------------------- telegram helpers -------------------
+# ------------------- TELEGRAM HELPERS -------------------
 def send_telegram(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -323,7 +330,3 @@ def mark_sent(symbol, direction):
     d[f"{symbol}_{direction}"] = time.time()
     with open(SENT_FILE,'w') as f:
         json.dump(d, f)
-
-def learn_outcome(symbol, direction, strategies, outcome):
-    # placeholder
-    pass
