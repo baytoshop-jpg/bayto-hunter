@@ -1,4 +1,4 @@
-# scanner_main.py
+# scanner_main.py – SINGLE SCAN (for GitHub Actions)
 import time
 from datetime import datetime
 from scanner_core import (
@@ -20,7 +20,7 @@ def make_signal_msg(signal):
 <b>✅ Active Strategies:</b>
 {strat_list}
 ━━━━━━━━━━━━━━━━━━━━━━━
-🤖 <b>Ultimate Scanner v9.4</b>"""
+🤖 <b>Ultimate Scanner v9.5 (GitHub Actions)</b>"""
 
 def run_scan():
     print(f"\n{'='*60}")
@@ -52,27 +52,11 @@ def run_scan():
             mark_sent(sig['symbol'], sig['direction'])
         else:
             print("❌ No setup")
-        time.sleep(0.3)
+        time.sleep(0.2)   # small delay only to avoid hitting rate limits
     print(f"\n{'='*60}")
     print(f"  📡 SIGNALS FOUND: {len(signals)}")
     print(f"{'='*60}")
 
 if __name__ == "__main__":
-    print("\n🚀 ULTIMATE SCANNER v9.4 (ERROR FREE)")
-    print("📊 7 Strategies | 30 min scan\n")
-    scan_count = 0
-    while True:
-        try:
-            scan_count += 1
-            print(f"\n{'#'*60}")
-            print(f"  SCAN #{scan_count} - {datetime.now()}")
-            print(f"{'#'*60}")
-            run_scan()
-            print("\n  😴 Next scan in 30 minutes...\n")
-            time.sleep(30*60)
-        except KeyboardInterrupt:
-            print("\n  👋 Stopped.\n")
-            break
-        except Exception as e:
-            print(f"\n  ❌ Main error: {e}")
-            time.sleep(60)
+    # NO infinite loop – run once and exit
+    run_scan()
