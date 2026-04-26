@@ -1,4 +1,4 @@
-# scanner_main.py – SINGLE SCAN (for GitHub Actions)
+# scanner_main.py – SINGLE SCAN
 import time
 from datetime import datetime
 from scanner_core import (
@@ -20,20 +20,20 @@ def make_signal_msg(signal):
 <b>✅ Active Strategies:</b>
 {strat_list}
 ━━━━━━━━━━━━━━━━━━━━━━━
-🤖 <b>Ultimate Scanner v9.6 (GitHub Actions)</b>"""
+🤖 <b>Ultimate Scanner v10.0 (No HTF trend, no volume filter)</b>"""
 
 def run_scan():
     print(f"\n{'='*60}")
     print(f"  🔥 SCAN - {datetime.now().strftime('%H:%M:%S')}")
-    gainers = get_top_gainers(30)
+    gainers = get_top_gainers(40)
     if not gainers:
         print("  No coins found.")
         return
-    print("\n  TOP 20 MOVERS:")
+    print("\n  TOP 20 MOVERS (by 24h change):")
     for i,g in enumerate(gainers[:20],1):
         arrow = "🚀" if g['change']>15 else "📈" if g['change']>5 else "📊" if g['change']>0 else "📉"
         print(f"    {i:2}. {arrow} {g['symbol']}: {g['change']:+.2f}%")
-    print(f"\n  Analyzing {len(gainers)} coins...\n")
+    print(f"\n  Analyzing {len(gainers)} coins... (checking both LONG and SHORT strategies)\n")
     signals = []
     for i, coin in enumerate(gainers,1):
         print(f"    [{i:2}/{len(gainers)}] {coin['symbol']}... ", end="")
