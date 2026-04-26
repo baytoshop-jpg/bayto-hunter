@@ -32,12 +32,17 @@ def get_klines(symbol, interval, limit=150):
     except:
         return None
 
-def get_top_gainers(limit=40):
+def get_top_gainers(limit=30):
     try:
-        r = requests.get(f"{FAPI}/fapi/v1/ticker/24hr", timeout=15)
+        url = f"{FAPI}/fapi/v1/ticker/24hr"
+        r = requests.get(url, timeout=20)
         if r.status_code != 200:
+            print(f"  API status {r.status_code}")
             return []
         data = r.json()
+        if not isinstance(data, list):
+            print("  Unexpected response")
+            return []
         gainers = []
         for t in data:
             sym = t.get('symbol')
@@ -45,13 +50,22 @@ def get_top_gainers(limit=40):
                 try:
                     pct = safe_float(t.get('priceChangePercent', 0))
                     vol = safe_float(t.get('quoteVolume', 0))
-                    if vol > 500000:
+                    if vol > 100000:   # volume threshold low enough
                         gainers.append({'symbol': sym, 'change': pct})
                 except:
                     continue
         gainers.sort(key=lambda x: abs(x['change']), reverse=True)
+        if not gainers:
+            # fallback – just top volume coins
+            sorted_by_vol = sorted([t for t in data if t.get('symbol', '').endswith('USDT')],
+                                   key=lambda x: safe_float(x.get('quoteVolume', 0)), reverse=True)
+            for t in sorted_by_vol[:limit]:
+                sym = t.get('symbol')
+                if sym:
+                    gainers.append({'symbol': sym, 'change': safe_float(t.get('priceChangePercent', 0))})
         return gainers[:limit]
-    except:
+    except Exception as e:
+        print(f"  Error in get_top_gainers: {e}")
         return []
 
 def calculate_ema(df, period):
@@ -311,5 +325,5 @@ def mark_sent(symbol, direction):
         json.dump(d, f)
 
 def learn_outcome(symbol, direction, strategies, outcome):
-    # placeholder for learning
+    # placeholder
     pass
