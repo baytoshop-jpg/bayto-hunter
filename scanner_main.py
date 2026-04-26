@@ -20,12 +20,12 @@ def make_signal_msg(signal):
 <b>✅ Active Strategies:</b>
 {strat_list}
 ━━━━━━━━━━━━━━━━━━━━━━━
-🤖 <b>Ultimate Scanner v9.5 (GitHub Actions)</b>"""
+🤖 <b>Ultimate Scanner v9.6 (GitHub Actions)</b>"""
 
 def run_scan():
     print(f"\n{'='*60}")
     print(f"  🔥 SCAN - {datetime.now().strftime('%H:%M:%S')}")
-    gainers = get_top_gainers(40)
+    gainers = get_top_gainers(30)
     if not gainers:
         print("  No coins found.")
         return
@@ -52,11 +52,10 @@ def run_scan():
             mark_sent(sig['symbol'], sig['direction'])
         else:
             print("❌ No setup")
-        time.sleep(0.2)   # small delay only to avoid hitting rate limits
+        time.sleep(0.2)
     print(f"\n{'='*60}")
     print(f"  📡 SIGNALS FOUND: {len(signals)}")
     print(f"{'='*60}")
 
 if __name__ == "__main__":
-    # NO infinite loop – run once and exit
     run_scan()
