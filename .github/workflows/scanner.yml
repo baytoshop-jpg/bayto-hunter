@@ -2,13 +2,13 @@ name: Ultimate Crypto Scanner
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # Every 4 hours (safe for free tier)
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15       # explicit timeout to avoid hanging
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
